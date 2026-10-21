@@ -1,0 +1,575 @@
+/* style.css */
+@import "tailwindcss";
+
+@theme {
+  --color-bg-main: var(--bg-main);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-primary: var(--primary);
+  --color-accent: var(--accent);
+  --color-secondary: var(--secondary);
+  --color-text-main: var(--text-main);
+  --color-text-muted: var(--text-muted);
+  --radius-theme: 4px;
+  --font-tab: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+
+:root {
+  --bg-main: #000000;
+  --bg-panel: #121212;
+  --bg-elevated: #050505;
+  --primary: #00f3ff;
+  --accent: #eab308;
+  --secondary: #ff00aa;
+  --text-main: #ffffff;
+  --text-muted: #9ca3af;
+  --primary-rgb: 0, 243, 255;
+  --accent-rgb: 234, 179, 8;
+  --secondary-rgb: 255, 0, 170;
+  --bg-deep: #0a0f16;
+  --bg-collection: #020204;
+  --bg-hero-mask: #050508;
+  --bg-modal: #0a0a0f;
+  --bg-vault: #0a0a10;
+  --bg-detail-side: #0f0f0f;
+  --bg-feedback: #0a0a15;
+  --bg-feedback-deep: #050510;
+  --bg-feedback-panel: #0f0f1a;
+  --success-bright: 0, 255, 0;
+  --purple-rgb: 139, 92, 246;
+  --font-header: 'Titan', 'impact', 'sans-serif';
+  --font-code: 'Code', 'monospace';
+  --font-ether: 'Ether', 'cursive';
+  --font-tab: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --header-transform: uppercase;
+  --bg-image: linear-gradient(0deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+  --bg-size: 60px 60px;
+}
+
+[data-theme='anime'] {
+  --bg-main: #f0f4fc;
+  --bg-panel: #ffffff;
+  --bg-elevated: #f8faff;
+  --primary: #ff66b2;
+  --accent: #38bdf8;
+  --secondary: #c084fc;
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --primary-rgb: 255, 102, 178;
+  --accent-rgb: 56, 189, 248;
+  --secondary-rgb: 192, 132, 252;
+  --bg-deep: #e8eefc;
+  --bg-collection: #ffffff;
+  --bg-hero-mask: #f0f4fc;
+  --bg-modal: #ffffff;
+  --bg-vault: #f8faff;
+  --bg-detail-side: #f1f5f9;
+  --bg-feedback: #faf5ff;
+  --bg-feedback-deep: #f5f3ff;
+  --bg-feedback-panel: #ffffff;
+  --bg-image: linear-gradient(0deg, rgba(192, 132, 252, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(192, 132, 252, 0.08) 1px, transparent 1px);
+  --bg-size: 32px 32px;
+}
+
+[data-theme='anime'] body {
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
+
+[data-theme='anime'] ::-webkit-scrollbar-thumb {
+  background: rgba(244, 114, 182, 0.25);
+}
+[data-theme='anime'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(244, 114, 182, 0.5);
+}
+
+@font-face { font-family: 'Titan'; src: url('./assets/fonts/Titan.woff2'); font-display: swap; }
+@font-face { font-family: 'Code'; src: url('./assets/fonts/Code.woff2'); font-display: swap; }
+@font-face { font-family: 'Ether'; src: url('./assets/fonts/Ether.woff2'); font-display: swap; }
+
+.font-titan { font-family: var(--font-header); }
+.font-code { font-family: var(--font-code); }
+.font-ether { font-family: var(--font-ether); }
+.font-tab { font-family: var(--font-tab); }
+.font-header, .theme-header { font-family: var(--font-header); text-transform: var(--header-transform); }
+
+body {
+  background-color: #000000;
+  color: #ffffff;
+  overflow: hidden;
+  transition: background-color 0.5s, color 0.5s;
+  background-image: var(--bg-image);
+  background-size: var(--bg-size);
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(var(--primary-rgb), 0.5); }
+
+@keyframes rgb-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.rgb-glow {
+  background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000);
+  background-size: 400%;
+  animation: rgb-flow 20s linear infinite;
+  filter: blur(10px);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes progress-gpu {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.animate-progress-gpu {
+  animation: progress-gpu 1.5s infinite linear;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+
+html.performance-mode *, .performance-mode * { animation-play-state: paused !important; }
+.performance-mode .animate-fade-in, .performance-mode .animate-fade-in-up {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+.performance-mode .rgb-glow {
+  opacity: 0.6 !important;
+  box-shadow: 0 0 20px rgba(var(--primary-rgb), 0.3) !important;
+}
+
+@layer base {
+  :is(button, [type="button"], [type="submit"], [type="reset"], [role="button"], a, summary) {
+    cursor: pointer;
+  }
+  :disabled, [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  button, [type="button"] {
+    appearance: none;
+  }
+  button:focus, [role="button"]:focus {
+    outline: none;
+  }
+}
+
+/* ==========================================
+   【Fix】Tailwind v4 兜底：TW3 内置/常用但 v4 移除或行为变更的类
+   ========================================== */
+.transform-gpu {
+  transform: translateZ(0);
+}
+.will-change-transform {
+  will-change: transform;
+}
+
+/* ==========================================
+   【Fix】Tailwind v4 Lightning CSS 可能误删 Vue scoped style 中的 keyframes
+   以下动画在全局兜底定义，确保 FeedbackView 星环/猫交互正常
+   ========================================== */
+@keyframes spin-slow {
+  from { transform: rotate(0deg) translateZ(0); }
+  to { transform: rotate(360deg) translateZ(0); }
+}
+@keyframes spin-reverse-medium {
+  from { transform: rotate(360deg) translateZ(0); }
+  to { transform: rotate(0deg) translateZ(0); }
+}
+@keyframes spin-fast {
+  from { transform: rotate(0deg) translateZ(0); }
+  to { transform: rotate(360deg) translateZ(0); }
+}
+@keyframes orbit {
+  from { transform: rotate(0deg) translateZ(0); }
+  to { transform: rotate(360deg) translateZ(0); }
+}
+@keyframes scan {
+  0% { transform: translateX(-100%) translateZ(0); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(100%) translateZ(0); opacity: 0; }
+}
+@keyframes twinkle {
+  0%, 100% { transform: scale(1) translateZ(0); opacity: 0.3; }
+  50% { transform: scale(1.5) translateZ(0); opacity: 1; }
+}
+@keyframes floatGentle {
+  0%, 100% { transform: translateY(0) translateZ(0); }
+  50% { transform: translateY(-8px) translateZ(0); }
+}
+@keyframes bounceHappy {
+  0%, 100% { transform: translateY(0) scale(1) translateZ(0); }
+  30% { transform: translateY(-20px) scale(1.05) translateZ(0); }
+  50% { transform: translateY(-15px) scale(1.05) translateZ(0); }
+  80% { transform: translateY(0) scale(0.95) translateZ(0); }
+}
+@keyframes earTwitch {
+  0%, 90%, 100% { transform: rotate(0deg) translateZ(0); }
+  92% { transform: rotate(-4deg) translateZ(0); }
+  94% { transform: rotate(4deg) translateZ(0); }
+  96% { transform: rotate(-4deg) translateZ(0); }
+}
+@keyframes bellGlow {
+  0%, 100% { opacity: 0.6; fill: #00f3ff; }
+  50% { opacity: 1; fill: #fff; }
+}
+@keyframes tailSway {
+  0%, 100% { transform: rotate(0deg) translateZ(0); }
+  50% { transform: rotate(10deg) translateZ(0); }
+}
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0) scale(1.1) translateZ(0); }
+  25% { transform: translate(-2px, 2px) scale(1.1) translateZ(0); }
+  75% { transform: translate(2px, -2px) scale(1.1) translateZ(0); }
+}
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(20px) translateZ(0); }
+  to { opacity: 1; transform: translateY(0) translateZ(0); }
+}
+@keyframes slideInLeft {
+  0% { opacity: 0; transform: translateX(-80px) translateZ(0); }
+  100% { opacity: 1; transform: translateX(0) translateZ(0); }
+}
+
+.animate-spin-slow { animation: spin-slow 240s linear infinite; }
+.animate-spin-reverse-medium { animation: spin-reverse-medium 100s linear infinite; }
+.animate-spin-fast { animation: spin-fast 20s linear infinite; }
+.animate-orbit { animation: orbit 80s linear infinite; }
+.animate-scan { animation: scan 8s linear infinite; }
+.animate-twinkle { animation: twinkle 10s ease-in-out infinite; }
+.animate-float-gentle { animation: floatGentle 8s ease-in-out infinite; }
+.animate-bounce-happy { animation: bounceHappy 1.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.animate-ear-twitch { animation: earTwitch 10s infinite; transform-origin: center 100px; }
+.animate-bell-glow { animation: bellGlow 4s infinite; }
+.animate-tail-sway { animation: tailSway 6s ease-in-out infinite; transform-origin: 210px 220px; }
+.animate-shake { animation: shake 0.8s linear infinite; }
+.animate-slide-in-up { animation: slideInUp 1s ease-out forwards; }
+.animate-slide-in-left { animation: slideInLeft 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* ==========================================
+   VIP Flow Line — 旧项目 100% 复刻
+   ========================================== */
+.vip-flow-line {
+  position: relative;
+  width: 100%;
+  height: 1px;
+  background: rgba(0, 243, 255, 0.15);
+  overflow: hidden;
+}
+.vip-flow-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -50%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #00f3ff, #ffffff, #00f3ff, transparent);
+  animation: vip-scan 3s linear infinite;
+}
+@keyframes vip-scan {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
+/* ==========================================
+   Navigation Tab — 双层结构顶栏标签
+   ========================================== */
+.nav-tab {
+  position: relative;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.45);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.2s, letter-spacing 0.2s;
+  white-space: nowrap;
+}
+.nav-tab.active {
+  color: #ffffff;
+  letter-spacing: 0;
+}
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: #00f3ff;
+  box-shadow: 0 0 12px rgba(0, 243, 255, 0.25);
+}
+.nav-tab:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ==========================================
+   Library Tool Button — 去胶囊化工具按钮
+   ========================================== */
+.lib-tool-btn {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lib-tool-btn:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ==========================================
+   fix50 viewport font scaling - smooth ramp past 1920px
+   native 16px at or below 1920; caps at 20px
+   ========================================== */
+@media (min-width: 1921px) {
+  html {
+    font-size: clamp(16px, calc(100vw / 120), 20px);
+  }
+}
+
+/* ==========================================
+   二次元浅色皮肤专属全局弹窗与深度层级覆盖
+   ========================================== */
+/* ==========================================
+   二次元浅色皮肤专属全局弹窗与深度层级覆盖 (严格对齐 3.html 标准规范)
+   ========================================== */
+[data-theme='anime'] .welcome-modal-content,
+[data-theme='acg'] .welcome-modal-content {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: #bce8ff !important;
+  box-shadow: 0 20px 60px rgba(180, 150, 230, 0.25) !important;
+}
+[data-theme='anime'] .welcome-modal-content h2,
+[data-theme='acg'] .welcome-modal-content h2 {
+  color: #1e192b !important;
+}
+[data-theme='anime'] .welcome-modal-content p,
+[data-theme='acg'] .welcome-modal-content p {
+  color: #4a425a !important;
+}
+[data-theme='anime'] .welcome-modal-content .text-zinc-500,
+[data-theme='anime'] .welcome-modal-content .text-zinc-400,
+[data-theme='acg'] .welcome-modal-content .text-zinc-500,
+[data-theme='acg'] .welcome-modal-content .text-zinc-400 {
+  color: #64748b !important;
+}
+[data-theme='anime'] .welcome-modal-content .bg-white\/\[0\.02\],
+[data-theme='acg'] .welcome-modal-content .bg-white\/\[0\.02\] {
+  background-color: #f8faff !important;
+  border-color: #e2d4f0 !important;
+}
+
+/* 全局模态框二次元浅色与物理级清晰对比度自适应 */
+[data-theme='anime'] .base-modal-content,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"],
+[data-theme='anime'] [class*="bg-[#0a0a0f]"],
+[data-theme='anime'] [class*="bg-[#0d0e12]"],
+[data-theme='anime'] [class*="bg-[#0e0e14]"],
+[data-theme='anime'] [class*="bg-[#101218]"],
+[data-theme='anime'] [class*="bg-[#12121a]"],
+[data-theme='acg'] .base-modal-content,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"],
+[data-theme='acg'] [class*="bg-[#0a0a0f]"],
+[data-theme='acg'] [class*="bg-[#0d0e12]"],
+[data-theme='acg'] [class*="bg-[#0e0e14]"],
+[data-theme='acg'] [class*="bg-[#101218]"],
+[data-theme='acg'] [class*="bg-[#12121a]"] {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  border-color: #bce8ff !important;
+  box-shadow: 0 20px 60px rgba(180, 150, 230, 0.25) !important;
+  color: #1e192b !important;
+}
+
+/* 弹窗内文本标题与副标题深紫黑高对比度 */
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] h1,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] h2,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] h3,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] h4,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] h1,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] h2,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] h3,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] h4,
+[data-theme='anime'] [class*="bg-[#0a0a0f]"] h3,
+[data-theme='anime'] [class*="bg-[#0d0e12]"] h3,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] h3,
+[data-theme='acg'] [class*="bg-[#0e0e14]"] h3,
+[data-theme='acg'] [class*="bg-[#0a0a0f]"] h3,
+[data-theme='acg'] [class*="bg-[#0d0e12]"] h3 {
+  color: #1e192b !important;
+}
+
+/* 彻底消灭白底白字：模态框内 text-white 自动转为深紫黑 */
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .text-white,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .text-white,
+[data-theme='anime'] [class*="bg-[#0a0a0f]"] .text-white,
+[data-theme='anime'] [class*="bg-[#0d0e12]"] .text-white,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] .text-white,
+[data-theme='acg'] [class*="bg-[#0e0e14]"] .text-white,
+[data-theme='acg'] [class*="bg-[#0a0a0f]"] .text-white,
+[data-theme='acg'] [class*="bg-[#0d0e12]"] .text-white {
+  color: #1e192b !important;
+}
+
+/* 彻底消灭灰底蓝灰字：正文与描述文本转为深灰紫 */
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] p,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .text-zinc-200,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .text-zinc-300,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .text-gray-300,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] p,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .text-zinc-200,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .text-zinc-300,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .text-gray-300,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] p,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] .text-zinc-300,
+[data-theme='acg'] [class*="bg-[#0e0e14]"] p,
+[data-theme='acg'] [class*="bg-[#0e0e14]"] .text-zinc-300 {
+  color: #4a425a !important;
+}
+
+/* 弱化元数据与占位符转为清晰石板深灰，杜绝不可见 */
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .text-zinc-400,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .text-zinc-500,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .text-gray-400,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .text-gray-500,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .text-zinc-400,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .text-zinc-500,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .text-gray-400,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .text-gray-500,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] .text-zinc-400,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] .text-zinc-500,
+[data-theme='acg'] [class*="bg-[#0e0e14]"] .text-zinc-400,
+[data-theme='acg'] [class*="bg-[#0e0e14]"] .text-zinc-500 {
+  color: #64748b !important;
+}
+
+/* 模态框内部暗色半透明子卡片自适应为浅紫白底槽 */
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .bg-white\/\[0\.02\],
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .bg-white\/\[0\.03\],
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .bg-white\/\[0\.04\],
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .bg-white\/5,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .bg-white\/\[0\.02\],
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .bg-white\/\[0\.03\],
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .bg-white\/\[0\.04\],
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .bg-white\/5,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .bg-black\/30,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .bg-black\/40,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] .bg-white\/\[0\.03\],
+[data-theme='acg'] [class*="bg-[#0e0e14]"] .bg-white\/\[0\.03\] {
+  background-color: #f8faff !important;
+  border-color: #e2d4f0 !important;
+}
+
+/* 模态框内输入框、下拉框白底深色字 */
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] input,
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] select,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] input,
+[data-theme='anime'] [class*="bg-[#0e0e14]"] select,
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] input,
+[data-theme='acg'] [class*="bg-[#0e0e14]"] input {
+  background-color: #ffffff !important;
+  border: 1.5px solid #e2d4f0 !important;
+  color: #1e192b !important;
+}
+
+/* 模态框顶部细流光线适配为二次元粉蓝渐变 */
+[data-theme='anime'] [class*="via-[#00f3ff]"],
+[data-theme='acg'] [class*="via-[#00f3ff]"] {
+  background: linear-gradient(90deg, transparent, #ff85b3, #6be5ff, transparent) !important;
+}
+
+/* 模态框青色确认主按钮转为 3.html 标准粉蓝渐变 */
+[data-theme='anime'] [class*="bg-[#0a0a0a]"] .bg-\[\#00f3ff\],
+[data-theme='anime'] [class*="bg-[#0e0e14]"] .bg-\[\#00f3ff\],
+[data-theme='acg'] [class*="bg-[#0a0a0a]"] .bg-\[\#00f3ff\],
+[data-theme='acg'] [class*="bg-[#0e0e14]"] .bg-\[\#00f3ff\] {
+  background: linear-gradient(90deg, #ff85b3 0%, #6be5ff 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 6px 16px rgba(255, 133, 179, 0.38) !important;
+}
+
+/* SweetAlert2 全局对话框二次元深字高对比度适配 */
+[data-theme='anime'] div:where(.swal2-container) div:where(.swal2-popup),
+[data-theme='acg'] div:where(.swal2-container) div:where(.swal2-popup) {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: 2px solid #bce8ff !important;
+  box-shadow: 0 20px 60px rgba(180, 150, 230, 0.25) !important;
+  color: #1e192b !important;
+  border-radius: 16px !important;
+}
+[data-theme='anime'] div:where(.swal2-container) .swal2-title,
+[data-theme='acg'] div:where(.swal2-container) .swal2-title {
+  color: #1e192b !important;
+  font-family: inherit !important;
+}
+[data-theme='anime'] div:where(.swal2-container) .swal2-html-container,
+[data-theme='acg'] div:where(.swal2-container) .swal2-html-container {
+  color: #4a425a !important;
+}
+[data-theme='anime'] div:where(.swal2-container) .swal2-confirm,
+[data-theme='acg'] div:where(.swal2-container) .swal2-confirm {
+  background: linear-gradient(90deg, #ff85b3 0%, #6be5ff 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px rgba(255, 133, 179, 0.38) !important;
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+}
+[data-theme='anime'] div:where(.swal2-container) .swal2-cancel,
+[data-theme='acg'] div:where(.swal2-container) .swal2-cancel {
+  background: #f8f5ff !important;
+  border: 1.5px solid #e2d4f0 !important;
+  color: #554c66 !important;
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+}
+
+
+
+/* 性能模式停顿补充 */
+html.performance-mode .animate-twinkle,
+html.performance-mode .animate-pulse-slow,
+html.performance-mode .animate-spin-slow,
+html.performance-mode .animate-spin-reverse-medium,
+html.performance-mode .animate-orbit,
+html.performance-mode .animate-float-gentle,
+html.performance-mode .animate-bounce-happy,
+html.performance-mode .animate-ear-twitch,
+html.performance-mode .animate-bell-glow,
+html.performance-mode .animate-tail-sway,
+html.performance-mode .animate-shake,
+html.performance-mode .mascot-float {
+  animation: none !important;
+  animation-play-state: paused !important;
+}
