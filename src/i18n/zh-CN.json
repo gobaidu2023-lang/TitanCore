@@ -85,7 +85,7 @@
     "localAssets": "LOCAL ASSETS",
     "localAssetsSub": "本地工具与补丁",
     "denuvoDesc": "该资源受 Denuvo 反篡改保护，部署后可能需要您自行提供正版授权。",
-    "dependencyDesc": "该资源标记为需要特定运行环境，直接启动可能崩溃，建议先安装必要的系统组件。",
+    "dependencyDesc": "该游戏需要安装启动补丁才能玩，详情页提供安装与下载指引。",
     "emptyTitle": "NO SIGNAL",
     "emptyDesc": "未检索到与 \"{keyword}\" 关联的节点信号。系统已记录此查询。",
     "returnNexus": "返回继续搜索",
@@ -104,50 +104,53 @@
     "ERR_DEPLOY_NETWORK": "所有下载节点连接异常。请查看本地网络状态，或更换节点重试。",
     "ERR_DEPLOY_EACCES": "目录权限不足导致部署失败。请关闭本软件后，右键图标选择\"以管理员身份运行\"。",
     "ERR_DEPLOY_EBUSY": "文件被底层占用或杀毒软件拦截。请临时关闭杀软后重试。",
-    "ERR_DEPLOY_UNKNOWN": "部署进程中断 (请重启软件或联系核心节点)",
+    "ERR_DEPLOY_UNKNOWN": "部署中断，请重启软件重试",
     "ERR_NO_GATEWAY_NODE": "网关未下发引擎节点，请切换节点重试。",
     "STATUS_KILL_STEAM": "正在强制结束 Steam 客户端以解除文件锁定...",
     "STATUS_LOCATE_STEAM": "正在定位 Steam 核心区域...",
     "STATUS_CLEAN_COMPONENTS": "已销毁 {count} 个劫持组件与日志",
-    "STATUS_CLEAN_MATRIX": "已连根拔除所有外源矩阵污染",
+    "STATUS_CLEAN_MATRIX": "已清理残留冲突文件",
     "STATUS_DIVERSION_OFF": "纯净分流标记已复位，恢复默认初始化行为",
     "STATUS_MODE_SWITCHING": "模式切换进行中，部署已安全中止",
     "STATUS_CACHE_HIT": "本地缓存命中，免下载直接覆盖",
     "STATUS_RESTORE_DONE": "Steam 环境已恢复原生态纯净",
     "STATUS_UNINSTALL_INIT": "正在定位并卸载 AppID: {appId} ...",
-    "STATUS_CLEAN_LUA": "已销毁神经突触脚本: {appId}.lua",
+    "STATUS_CLEAN_LUA": "已清理配置文件: {appId}.lua",
     "STATUS_CLEAN_MANIFEST": "已清理 {count} 个动态清单",
     "STATUS_UNINSTALL_DONE": "卸载完成",
-    "STATUS_DEPLOY_ENGINE_INIT": "正在接管 Steam 底层引擎切换任务...",
-    "STATUS_DOWNLOAD_NODE": "建立链路: [{node}] 正在全速拉取 {label}...",
+    "STATUS_DEPLOY_ENGINE_INIT": "正在切换 Steam 引擎...",
+    "STATUS_DOWNLOAD_NODE": "正在从节点 [{node}] 下载 {label}...",
     "STATUS_NODE_FALLBACK": "[警告] 当前节点阻断，无缝切换备用链路...",
     "STATUS_EXTRACT_ENGINE": "正在解压并配置引擎运行时...",
     "STATUS_MIGRATE_DATA": "执行数据迁移与旧组件环境清理...",
-    "STATUS_MIGRATE_LUA": "已无损迁移 {count} 个历史游戏神经突触矩阵",
-    "STATUS_INSTALL_DLL": "正在将新底层组件植入 Steam 根目录...",
-    "STATUS_DEPLOY_ENGINE_DONE": "引擎 [{engine}] 已全面接管环境。",
+    "STATUS_MIGRATE_LUA": "已迁移 {count} 个历史游戏配置",
+    "STATUS_INSTALL_DLL": "正在将组件部署至 Steam 根目录...",
+    "STATUS_DEPLOY_ENGINE_DONE": "引擎 [{engine}] 已部署完成。",
     "STATUS_CHECK_ENV": "正在检测本地引擎环境完整性...",
     "STATUS_ENV_GREEN": "环境绿灯，启动极速部署通道...",
     "STATUS_EXTRACT_COMPONENTS": "正在配置运行时组件...",
     "STATUS_VERIFY_IO": "正在验证 I/O 接口完整性...",
-    "STATUS_EXTRACT_MANIFEST": "正在解析动态清单矩阵并重构挂载脚本...",
+    "STATUS_EXTRACT_MANIFEST": "正在配置游戏清单与启动项...",
     "STATUS_NO_MANIFEST": "警告: 仅部署引擎环境，未检测到业务游戏清单。",
-    "STATUS_DEPLOY_DONE": "协议部署挂载成功。",
+    "STATUS_DEPLOY_DONE": "入库部署成功。",
     "STATUS_DEPLOY_FAIL": "部署阻断: {msg}",
     "STATUS_CLEAN_FAIL": "强制清洗失败: {msg}",
     "STATUS_UNINSTALL_FAIL": "卸载失败: {msg}"
   },
   "discovery": {
     "noDesc": "该资产暂无详细描述信息。",
-    "tabSteam": "Steam 精选热门",
-    "tabCollection": "单机大作",
+    "tabSteam": "Steam游戏",
+    "tabCollection": "精选专题",
     "tabSearch": "全网搜索",
-    "tabGame": "联机体验",
-    "tabTool": "DLC 扩展",
-    "tabPatch": "工具资源",
+    "tabGame": "硬盘游戏",
+    "tabPatch": "启动补丁",
     "empty": "暂无数据信号",
     "unknownTitle": "未知资源",
-    "tabShare": "共享游戏"
+    "tabShare": "共享游戏",
+    "shareBannerTitle": "指挥官专属共享游戏库",
+    "shareBannerBadge": "自费福利",
+    "shareBannerDesc": "由开发者自费购买正版 Steam 凭据，给支持 TitanCore 的核心小伙伴们提供力所能及的专属体验福利。",
+    "dontShowAgain": "不再显示"
   },
   "card": {
     "collect": "收藏",
@@ -159,7 +162,8 @@
     "launch": "启动 ▶",
     "download": "下载 ▼",
     "view": "查看",
-    "getAuthorization": "获取授权"
+    "getAuthorization": "获取授权",
+    "launchGame": "启动游戏"
   },
   "library": {
     "toggleUpdateFailed": "切换失败",
@@ -186,7 +190,6 @@
     "removeBatchConfirm": "确认移除",
     "tabSteamLib": "Steam游戏库",
     "tabGame": "硬盘游戏",
-    "tabTool": "工具资源",
     "batchDeploy": "批量入库",
     "searchPlaceholder": "本地资源检索...",
     "noAssets": "暂无资产",
@@ -204,7 +207,10 @@
       "onlineLaunch": "开启联机",
       "disableUpdate": "关闭更新",
       "enableUpdate": "开启更新",
-      "dlcManage": "DLC管理"
+      "dlcManage": "DLC管理",
+      "gotoPatchCommunity": "前往下载补丁",
+      "autoInstallPatch": "自动安装补丁",
+      "openPatcher": "打开补丁助手"
     },
     "redeployAll": "全部重新部署",
     "defaultDesc": "个人私有库本地管理资源。",
@@ -268,7 +274,12 @@
       "failTitle": "启动失败",
       "noAppId": "无法获取有效的 AppID",
       "unknownError": "未知错误",
-      "errorDefault": "启动过程中发生错误"
+      "errorDefault": "启动过程中发生错误",
+      "launchGame": "启动游戏",
+      "notInstalledTitle": "请先在Steam安装游戏",
+      "notInstalledDesc": "检测到该游戏尚未在 Steam 客户端完成下载安装。请先在 Steam 中点击安装，下载完成后再点击启动。",
+      "successTitle": "正在拉起游戏",
+      "successDesc": "已触发 Steam 启动协议..."
     },
     "uninstall": {
       "title": "确认执行卸载？",
@@ -293,7 +304,18 @@
       "errorTitle": "操作失败"
     },
     "unknownAsset": "未知资产",
-    "tabPatch": "游戏补丁"
+    "tabPatch": "游戏补丁",
+    "patchNotice": {
+      "title": "安全提示",
+      "content": "游戏补丁会被杀毒软件误报，请提前关闭杀软。如果因杀软误删导致补丁安装失败，请关闭杀软后，重新点击“自动安装补丁”。",
+      "dontRemind": "我知道了 不再提醒",
+      "installingTitle": "正在检索并部署补丁...",
+      "installingDesc": "请稍候，这可能需要一点时间",
+      "dispatchedTitle": "补丁部署指令已派发",
+      "dispatchedDesc": "已调起补丁助手进行自动化处理",
+      "failTitle": "部署补丁失败",
+      "errorTitle": "部署补丁异常"
+    }
   },
   "transmissions": {
     "engineBannerTitle": "下载引擎未就绪：",
@@ -370,26 +392,26 @@
   },
   "settings": {
     "ostModeTitle": "加载模式",
-    "ostModePureDesc": "纯净模式 (Steam 零污染)",
-    "ostModeClassicDesc": "经典模式 (组件在 Steam 目录)",
+    "ostModePureDesc": "纯净模式 (不碰 Steam 目录，0 污染，推荐)",
+    "ostModeClassicDesc": "经典模式 (部署到 Steam 目录，经典方式)",
     "ostModeToClassic": "切换到经典模式",
     "ostModeToPure": "切换到纯净模式",
-    "ostModeSwitching": "切换中(将自动重启 Steam)...",
-    "pureModeTitle": "切换至纯净无感模式",
-    "pureModeDesc": "通过内存挂起注入与导入表动态代理，实现 Steam 官方安装目录零文件改动、零写入。辅助组件完全独立分流，彻底杜绝网游反作弊误封风险。",
-    "classicModeTitle": "切换至经典兼容模式",
-    "classicModeDesc": "将在 Steam 安装根目录下投放代理 DLL（如 xinput1_4.dll）。专治杀毒软件严格拦截注入、拒绝内存挂起的特殊妖机环境。如非纯净模式被杀软拦截，不建议日常开启。",
+    "ostModeSwitching": "正在切换模式，将自动重启 Steam...",
+    "pureModeTitle": "切换至纯净模式",
+    "pureModeDesc": "【洁癖】开发者的心血：不碰steam目录，0污染，0写入，强烈推荐用这个！！！注意：该模式必须从TC启动steam才能生效。",
+    "classicModeTitle": "切换至经典模式",
+    "classicModeDesc": "将DLL工具包部署进steam根目录，大家熟悉的【经典方式】。",
     "ostModeLaunch": "从 TC 启动 Steam",
     "ostModeLaunching": "启动中(可能先关闭 Steam)...",
     "ostModeSwitchDoneTitle": "模式切换完成",
-    "ostModeSwitchDonePure": "已切换到纯净模式, 正在带组件启动 Steam...",
-    "ostModeSwitchDoneClassic": "已切换到经典模式, 正在启动 Steam...",
+    "ostModeSwitchDonePure": "已切换到纯净模式，正在启动 Steam...",
+    "ostModeSwitchDoneClassic": "已切换到经典模式，正在启动 Steam...",
     "ostModeSwitchFailTitle": "模式切换失败",
     "ostModeLaunchDoneTitle": "启动完成",
-    "ostModeLaunchDoneDesc": "Steam 已带组件启动 (注入握手成功)",
-    "ostModeLaunchClassicDesc": "Steam 已启动 (经典模式生效)",
+    "ostModeLaunchDoneDesc": "Steam 启动成功，组件已就绪",
+    "ostModeLaunchClassicDesc": "Steam 启动成功，经典模式已生效",
     "ostModeLaunchDegradedTitle": "Steam 已启动",
-    "ostModeLaunchDegradedDesc": "组件注入未确认, 已普通方式启动。可重试本按钮。",
+    "ostModeLaunchDegradedDesc": "未检测到组件，已按普通方式启动。可重试从 TC 启动。",
     "ostModeFailTitle": "启动失败",
     "ostModeUnknown": "未知错误",
     "crMigrateDoneTitle": "迁移完成",
@@ -408,11 +430,17 @@
     "setHotkeyTitle": "点击设置快捷键",
     "diagRunning": "检测中...",
     "diagBtn": "系统自检",
+    "exportLogsBtn": "导出日志",
+    "exportLogsRunning": "正在打包...",
+    "exportLogsDoneTitle": "日志已导出",
+    "exportLogsDoneDesc": "诊断日志包已成功保存至您的桌面，并已自动高亮选中。",
+    "exportLogsFailTitle": "导出日志失败",
     "exp": {
       "title": "实验功能",
       "btn": "实验功能",
       "onlineLaunch": "开启联机",
       "luaImport": "导入清单",
+      "gameFastLaunch": "游戏快捷启动",
       "toolsTitle": "工具箱",
       "tools": {
         "dlc": "DLC管理",
@@ -473,7 +501,7 @@
     "title": "设置中心",
     "connection": {
       "invalidKey": "应急节点 key 无效，请核对后重试",
-      "title": "加密信号接入点",
+      "title": "服务器网络节点",
       "node1": "节点 1 (高速)",
       "node2": "节点 2 (流畅)",
       "node3": "节点 3 (备用)",
@@ -487,15 +515,15 @@
       "noOnline": "不支持联机"
     },
     "identity": {
-      "title": "身份识别",
+      "title": "账号登录",
       "emailPlaceholder": "邮箱 / 用户名",
       "passwordPlaceholder": "密码",
       "forgotPassword": "忘记密码？",
       "login": "登录",
-      "loggingIn": "验证中...",
+      "loggingIn": "正在登录...",
       "inputRequired": "请输入邮箱和密码",
-      "noAccount": "还没有账号？\n通过加密通道注册。",
-      "register": "注册新身份",
+      "noAccount": "还没有账号？\n点击前往注册。",
+      "register": "注册新账号",
       "normalUser": "普通用户",
       "offlineReady": "离线模式已就绪",
       "offlineNotReady": "离线模式未开启",
@@ -526,24 +554,24 @@
       "st": "ST 通用引擎",
       "ost": "OST 新引擎",
       "switchConfirmTitle": "引擎切换确认",
-      "switchDesc": "您即将接驳至",
-      "switchDescEnd": "引擎内核。",
-      "warningTitle": "极高风险操作警告",
-      "warningText": "接驳新引擎需要植入底层通信模块，系统将强制结束所有运行中的 Steam 客户端进程。请在继续前确保您已保存本地游戏进度。",
-      "confirmBtn": "强杀并接驳",
-      "switchSuccessTitle": "引擎已接管",
-      "switchSuccessDesc": "新内核已完成DLL安全挂载，Steam正在重构启动。",
-      "updateTitle": "驱动矩阵升级可用",
-      "updateDesc": "检测到系统级核心引擎 <span class=\"text-[#00f3ff] font-bold\">[{engine}]</span> 已发布 <span class=\"text-accent font-bold\">v{version}</span> 版本。",
-      "updateDetail": "最新引擎已深度适配 Steam 底层网络更迭，修复部分链路阻断问题。建议立即接驳。",
-      "updateWarning": "【警告】更新操作将强制终止 Steam 客户端进程，请确保云存档已同步。",
-      "updateBtnCancel": "暂不接驳",
-      "updateBtnConfirm": "立即修复更新",
-      "updatingText": "正在覆写协议...",
+      "switchDesc": "准备切换至 ",
+      "switchDescEnd": " 引擎。",
+      "warningTitle": "切换引擎提示",
+      "warningText": "切换引擎将自动重启 Steam，请在继续前保存好正在运行的游戏进度。",
+      "confirmBtn": "重启 Steam 并切换",
+      "switchSuccessTitle": "引擎切换完成",
+      "switchSuccessDesc": "新引擎已配置完毕，正在启动 Steam。",
+      "updateTitle": "发现引擎新版本",
+      "updateDesc": "检测到核心引擎 <span class=\"text-[#00f3ff] font-bold\">[{engine}]</span> 发布了 <span class=\"text-accent font-bold\">v{version}</span> 版本。",
+      "updateDetail": "新版本修复了部分启动与网络问题，建议更新。",
+      "updateWarning": "更新过程中将关闭 Steam，请确保游戏存档已保存。",
+      "updateBtnCancel": "稍后更新",
+      "updateBtnConfirm": "立即更新",
+      "updatingText": "正在下载更新...",
       "steamtoolsName": "SteamTools (ST)",
       "ostName": "Original Steam Tools (OST)",
-      "updateSuccessTitle": "引擎接驳成功",
-      "updateFailTitle": "覆写失败",
+      "updateSuccessTitle": "引擎更新成功",
+      "updateFailTitle": "更新失败",
       "updateFailDefault": "未知阻断"
     },
     "maintain": {
@@ -617,7 +645,17 @@
     "docs": {
       "btnTitle": "常见问题汇总",
       "openBtn": "开启使用指南"
-    }
+    },
+    "pureCardTitle": "纯净模式 · 零文件污染",
+    "pureBadge": "强烈推荐",
+    "pureTag1": "不碰 Steam 目录",
+    "pureTag2": "0 污染 0 写入",
+    "pureTag3": "必须从 TC 启动生效",
+    "classicCardTitle": "经典模式 · 兼容兜底",
+    "classicBadge": "经典方式",
+    "classicTag1": "部署进 Steam 根目录",
+    "classicTag2": "大家熟悉的经典方式",
+    "classicTag3": "直接开 Steam 也能用"
   },
   "feedback": {
     "pageTitle": "星际链路",
@@ -696,7 +734,16 @@
     "installed": "已安装",
     "notInstalled": "未安装",
     "installPath": "安装路径",
-    "unknown": "未知"
+    "unknown": "未知",
+    "notice": {
+      "copied": "已复制",
+      "copyCodePrefix": "码: ",
+      "copyPwdPrefix": "解压: ",
+      "copyCodeTitle": "点击复制提取码: ",
+      "copyPwdTitle": "点击复制解压密码: ",
+      "directOpen": "直达",
+      "close": "关闭"
+    }
   },
   "detail": {
     "closeEsc": "关闭 (ESC)",
@@ -779,6 +826,9 @@
     "mirrorDirect": "直连",
     "terminalTitle": "TITAN 终端",
     "terminalDone": "操作完成",
+    "guideTitle": "新手排障指南",
+    "guideStep1": "请在 Steam 客户端游戏库中找到本作直接安装运行。",
+    "guideStep2": "如果 Steam 里没有，就从 TC 重启一下，V社网络抽风是老毛病了。",
     "terminalFailed": "操作中断",
     "terminalRunning": "正在挂载底层协议，请保持窗口开启",
     "btnFinish": "完成",
@@ -787,6 +837,10 @@
     "radarDenuvoDesc": "该游戏受加密保护，部署后仍可能需要购买正版授权。建议先确认是否拥有该游戏。",
     "radarDependencyTitle": "运行环境提示",
     "radarDependencyDesc": "运行前可能需要安装额外组件（请搜索安装该游戏的补丁）。如安装补丁后仍然无法启动，请在发送心愿处联系我们。",
+    "radarYellowFreeTitle": "该游戏需要安装启动补丁才能玩！",
+    "radarYellowFreeDesc": "请前往TC官方社区下载补丁和安装工具，拖进去就能自动生效。也可以赞助支持一下TC，直接在数字仓库『右键一键安装补丁』。",
+    "radarYellowVipTitle": "补丁版本适配提示",
+    "radarYellowVipDesc": "尊贵的 TC玩家，本游戏已锁定补丁适配的版本，入库下载完，打开TC【数字仓库】，右键 安装补丁 即可。",
     "steamProtocolDesc": "Steam 协议已连接\nAppID: {appId}",
     "terminalAuthRequired": "请先登录后再下载",
     "terminalGatewayError": "获取链接失败：{msg}。请检查网络连接，或稍后重试",
@@ -817,9 +871,11 @@
     "deployingNoClose": "部署中请勿关闭",
     "doNotInterrupt": "请勿中断进程",
     "sharegame": {
+      "prereqTitle": "前置必要条件：必须提前在 Steam 下载安装完毕！",
+      "prereqDesc": "官方正版凭据生成后仅有约 30 分钟激活有效期。请务必提前在 Steam 入库并【彻底下载安装完毕】该游戏后再点击获取凭据！若提前出票，凭据将在漫长的下载过程中过期作废；且受每日单人单游戏限领 1 次铁律保护，今日将无法重新补领。",
       "authorizing": "正在授权...",
       "authSuccessTitle": "【{name}】授权成功",
-      "authSuccessDesc": "授权凭据已写入注册表，请彻底重启 Steam 后启动游戏",
+      "authSuccessDesc": "授权凭据已成功写入注册表！请彻底退出并重启一次 Steam 客户端即可畅玩。",
       "ready": "✓ 授权凭据已更新就绪",
       "noAccounts": "未检测到本地 Steam 登录账号",
       "error": {
@@ -829,7 +885,18 @@
         "429": "请求过于频繁或系统繁忙，请稍后再试",
         "500": "共享网关服务器异常，请稍后重试",
         "503": "共享授权服务维护中"
-      }
+      },
+      "sponsorNoticeTitle": "凭据配额提示",
+      "sponsorNoticeDesc": "本游戏由作者个人自费购买正版账号并提供官方 Steam 凭据支持。因 Denuvo 官方对单账号施加了极严格的每日激活限制（每个游戏一天仅能生成 5 张有效票据），为保证凭据不被滥用失效，此福利仅向 LV2 永久赞助核心小伙伴开放，感谢各位的理解与支持！",
+      "gotIt": "我知道了",
+      "quotaTitle": "全服当日配额",
+      "quotaRemaining": "剩余 {remaining} / {limit} 张",
+      "quotaFull": "已领完 (0/5) · 最早 {time} 释放新名额",
+      "accountLabel": "授权给当前设备账号:",
+      "restartSteamHint": "请确认所选账号已在 Steam 本地正常登录过。凭据写入后，必须彻底退出并重启一次 Steam 客户端方可生效。",
+      "authBtnReady": "⚡ 获取正版免密凭据",
+      "authBtnFull": "今日配额已满 (0/5)",
+      "authBtnWorking": "正在向 Steam 专线获取凭据..."
     }
   },
   "vault": {
@@ -940,10 +1007,10 @@
     "ready": "READY"
   },
   "welcome": {
-    "firstLogin": "首次使用请完成身份识别登录",
+    "firstLogin": "首次使用请先登录账号",
     "switchSettings": "可解锁超过7万个Steam游戏,每天仍在同步更新",
     "browseDiscovery": "资源探索和全网搜索-获取全部可用资源",
-    "initNeuralLink": "初始化神经链接"
+    "initNeuralLink": "开始探索"
   },
   "register": {
     "title": "注册新身份",
@@ -965,7 +1032,42 @@
     "sourceAuto": "自动探测",
     "sourceNone": "链路断开（未找到）",
     "pathNotFound": "未找到有效的 Steam 核心路径，请手动指派",
-    "driverCore": "驱动核心环境"
+    "driverCore": "驱动核心环境",
+    "launcher": {
+      "protectedTitle": "主号安全保护已激活",
+      "protectedDesc": "当前账号{acc}不在白名单，已纯原生启动并隔绝辅助",
+      "nativeTitle": "Steam 已纯原生干净启动",
+      "nativeDesc": "已隔绝辅助，网游零封号风险",
+      "readyTitle": "Steam 辅助环境已就绪",
+      "readyDesc": "纯净隔离模式已激活",
+      "successTitle": "Steam 客户端已成功启动",
+      "degradedTitle": "Steam 已启动，但辅助未能挂载",
+      "degradedDesc": "系统已为您自动降级为<strong style=\"color: #10b981;\">官方原版环境</strong>启动 Steam，本次运行将不会生效单机辅助。",
+      "detectDetail": "检测详情",
+      "degHandshake": "挂起注入握手超时（通常为杀毒软件阻止进程通信或系统卡顿）",
+      "degNative": "原生注入引擎模块丢失 (tc_native.node)",
+      "degDll": "底座工具文件缺失 (OpenSteamTool.dll)",
+      "degUnknown": "未知降级原因",
+      "solTitle": "💡 排查与解决方案建议：",
+      "sol1": "可点击下方【运行系统自检】快速排查环境与权限；",
+      "sol2": "检查 Windows Defender 或杀毒软件是否拦截了注入文件；",
+      "sol3": "若注入被系统安全软件持续阻断，可在【设置中心】切换为经典模式。",
+      "iKnow": "我知道了",
+      "runDiagnostics": "运行系统自检",
+      "retry": "重试启动",
+      "failTitle": "启动 Steam 失败",
+      "reasonLabel": "原因",
+      "solLabel": "💡 解决指引",
+      "errNotFound": "未能在系统中找到 steam.exe",
+      "solNotFound": "请前往【设置中心 - 宿主环境】手动指定您的 Steam 安装根目录。",
+      "errStillRunning": "Steam 仍在后台运行，强杀进程超时",
+      "solStillRunning": "请打开任务管理器强制结束 steam.exe 进程后重试。",
+      "errBusy": "已有启动或重启任务正在进行中",
+      "solBusy": "请稍等数秒，避免频繁重复点击。",
+      "errSystem": "系统调用异常",
+      "solSystem": "建议点击【运行系统自检】排查原因，或重新启动电脑。",
+      "confirm": "确定"
+    }
   },
   "offlineMode": {
     "title": "离线模式",
@@ -1261,15 +1363,15 @@
     "patch": {
       "denuvo": {
         "title": "D 加密游戏",
-        "desc": "目前仅支持已有 voice38 补丁的 D 加密游戏。无补丁资源入库后无法启动，请耐心等待后续补丁更新或更换其他资源。"
+        "desc": "目前已内置所有D加密游戏补丁，支持一键自动安装和手动拖拽导入助手工具安装。"
       },
       "movieGame": {
         "title": "国产影游 / 联网验证",
-        "desc": "大部分影视类游戏内置联网验证，必须使用专用补丁方可启动。直接入库通常无法运行，请关注补丁更新。"
+        "desc": "大部分影视类游戏内置联网验证，必须使用专用补丁方可启动。直接入库通常无法运行，请在社区关注补丁更新。"
       },
       "onlineFix": {
         "title": "联机补丁",
-        "desc": "部分在线游戏需配合 onlinefix 联机补丁才能联网游玩。强烈建议使用小号测试，避免主账号受到限制。"
+        "desc": "请前往社区下载TC联机补丁助手，同步大毛主站，支持超过3000+游戏。"
       }
     },
     "multiplayer": {
@@ -1285,21 +1387,21 @@
     "dlc": {
       "unlock": {
         "title": "如何解锁DLC",
-        "desc": "少部分游戏支持单独搜索APPID解锁DLC，大部分游戏请直接搜索入库本体，本体已包含了完整DLC。【不保证所有游戏满DLC】"
+        "desc": "入库游戏时，已附带了DLC。【不保证所有游戏满DLC】"
       },
       "missing": {
-        "title": "DLC缺失问题",
-        "desc": "部分游戏可能缺失DLC，请通过【侧栏】发送心愿，反馈缺失的DLC和游戏，我们会尽快更新补录。"
+        "title": "DLC单独解锁",
+        "desc": "设置-实验功能-DLC管理工具，可以单独补全DLC，适用于给本体补齐DLC【部分联网验证DLC无法补入】"
       },
       "safety": {
-        "title": "对主账号有什么影响",
-        "desc": "没有影响，无论是用专用的DLC解锁工具还是入库方式解锁DLC，都对主账号没有影响，这比入库安全10000倍。"
+        "title": "DLC更新",
+        "desc": "如果新出的DLC搜不到，请在侧栏发消息给我们，一定会更新的！"
       }
     },
     "builtin": {
       "download": {
-        "title": "单机游戏资源如何下载",
-        "desc": "内置的单机游戏均为实测后：可运行，安全，无毒的版本，请使用 TC内置的下载引擎下载，无需网盘，跑满你的宽带。"
+        "title": "ASF挂卡助手",
+        "desc": "这个懂的都懂，给大号买的游戏们掉卡，然后去steam市场卖掉，余额可以买游戏。"
       },
       "engine": {
         "title": "下载引擎如何使用",
@@ -1307,7 +1409,7 @@
       },
       "minigame": {
         "title": "小游戏有什么用",
-        "desc": "没什么用，玩TC原创的小游戏，可以用core积分兑换更多下载次数，随着作者学习的技能越来越多，游戏会越来越好玩。"
+        "desc": "可兑换下载额度，玩TC原创的小游戏，随着作者学习的技能越来越多，游戏会越来越好玩。"
       }
     },
     "faq": {
@@ -1339,13 +1441,9 @@
         "q": "游戏无法启动",
         "a": "通常是因为入库了目前不支持的资源类型（D 加密 / 影游 / 在线联网游戏 / 第三方平台如 EA、育碧启动器）。建议等待补丁或更换游戏。"
       },
-      "launch54": {
-        "q": "游戏启动报错 54",
-        "a": "通常是因为使用 ST 引擎或游戏启动器绑定 Steam 校验导致。可切换至 OST 引擎，或使用 Steamless 工具处理（全网搜索：steamless）。"
-      },
       "updateFail": {
         "q": "游戏无法更新 / 提示版本过旧",
-        "a": "通常是因为锁定了游戏清单版本。使用最新版 TC 重新入库该游戏即可解决。"
+        "a": "请在数字仓库右键开启更新。"
       }
     },
     "title": "使用指南"
@@ -1523,5 +1621,72 @@
     "gamesUnit": "款",
     "managePrivileges": "点击管理终端特权",
     "connectNetwork": "点击接入泰坦核心网络"
+  },
+  "shareModal": {
+    "badge": "正版共享福利",
+    "subtitle": "开发者全额自费购买正版凭据，供核心支持者免费体验",
+    "lotteryBadge": "平台号池轮盘",
+    "lotterySubtitle": "指挥官专属号池轮盘 · 每次消耗 10 额度 · 试试手气",
+    "lotteryCostLabel": "单次抽取:",
+    "lotteryCostUnit": "10 下载额度",
+    "lotteryMyBalanceLabel": "我的可用额度:",
+    "lotteryBalanceUnit": "点",
+    "lotteryRoundLabel": "本轮试手气:",
+    "lotteryRoundUnit": "/ {max} 次",
+    "lotteryStatus": "轮盘号池",
+    "lotteryStatusCd": "12h冷却中",
+    "lotteryNoticeTitle": "共享号源试手气提醒",
+    "lotteryNoticeTag": "{max}号轮转·12h冷却",
+    "lotteryNoticeDesc": "共享号无法保证100%成功，花费10点额度赌一次，今天不行明天再来，总能成的！",
+    "lotteryNoticeInstallWarn": "⚠️ 必须先在 Steam 下载安装好游戏再来抽取！票据有效期仅 30 分钟，获取后请立即点击下方按钮重启 Steam 启动一次游戏。",
+    "btnLotteryReady": "🎰 花费 {cost} 额度试手气 (第 {cur} / {max} 次)",
+    "btnLotteryNoQuota": "下载额度不足 (抽取需 10 点)",
+    "btnLotteryWorking": "正在向号池抽取凭据...",
+    "close": "关闭弹窗",
+    "appId": "Steam AppID:",
+    "defaultTitle": "Steam 共享游戏",
+    "defaultDesc": "开发者自费购买正版 Steam 凭据，给支持 TitanCore 的核心小伙伴们提供力所能及的专属体验福利。",
+    "tagShared": "共享游戏",
+    "tagLegit": "正版凭据",
+    "quotaRemainingLabel": "当前游戏 当前剩余:",
+    "quotaSlots": "/ 5",
+    "userDailyLabel": "当日可用:",
+    "userDailyLimit": "/ 2",
+    "statusAvailable": "名额充裕",
+    "statusCooling": "排队冷却中",
+    "noticeTitle": "请先在 Steam 下载安装完游戏，再来领取凭据！",
+    "noticeDesc": "凭据领取后约 30 分钟过期。请务必提前在 Steam 入库并【彻底安装完毕】后再领；单人单游戏每天限领 1 次，若提前出票在漫长下载中失效，今日将无法补发。",
+    "targetAccountLabel": "将要授权给当前登录账号",
+    "refreshAccount": "刷新账号",
+    "refreshAccountTitle": "在 Steam 客户端切换账号后，点此刷新",
+    "activeBadge": "当前活跃",
+    "detectingAccount": "正在检测 Steam 当前登录账号...",
+    "noAccountDetected": "未检测到登录中的 Steam 账号，请先在电脑启动 Steam",
+    "accountSwitchHint": "💡 如果账号不对，请在 Steam 切换账号后再来操作。",
+    "successTitle": "凭据已成功导入本机！",
+    "expireRemaining": "激活有效期剩余:",
+    "timeFormat": "{m}分{s}秒",
+    "successDesc": "票据有效期仅 30 分钟！请先点击下方按钮重启 Steam 使凭据生效，再去 Steam 启动一次游戏完成激活。",
+    "restartSteamBtn": "重启 Steam (使凭据生效)",
+    "launchBtnWorking": "正在重启 Steam 注入凭据...",
+    "launchBtn": "启动游戏(快去steam启动)",
+    "btnWorking": "正在领取中...",
+    "btnClaimed": "您今日已领过本作 (单游戏每天限1次)",
+    "btnLimitReached": "今日体验额度已用完 (每天限2款)",
+    "btnQuotaFull": "今日名额已领满 (请等待冷却释放)",
+    "btnNoAccount": "未检测到登录中的 Steam 账号",
+    "btnReady": "立即领取正版凭据",
+    "sponsorModalTitle": "指挥官专属自费福利说明",
+    "sponsorModalP1": "共享游戏库由开发者以个人资金全额自费购买正版凭据，旨在为长期支持 TitanCore 的核心小伙伴们提供力所能及的专属体验福利。",
+    "sponsorModalP2": "受物理单游戏每日 5 张票及自费资金规模限制，本功能目前仅面向永久赞助的指挥官专属开放，望理解见谅。",
+    "gotIt": "我知道了",
+    "toastLoginFirst": "请先登录 Titan 账号",
+    "toastRestartingSteam": "正在重启 Steam 刷新凭据...",
+    "toastLaunchSuccess": "游戏已成功唤起！",
+    "toastAuthSuccess": "凭据已成功导入本机！",
+    "toastAuthFailedDefault": "未能成功获取授权凭据，请稍后重试",
+    "toastNetworkTimeout": "网络连接超时，请重试",
+    "btnLotteryCd": "本轮 {max} 次已用完 (12小时冷却中)",
+    "lotteryTurnCount": "已转 {c} / {max} 次 (12h)"
   }
 }

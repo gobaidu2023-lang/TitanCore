@@ -19,25 +19,25 @@ export function handleLaunchFeedback(res: any, onRetry?: () => void) {
   // 0. 主号保护启动（账号不在白名单，未注入，纯原生环境）
   if (res.protected && res.success) {
     const acc = res.accountName ? ` (${res.accountName})` : ''
-    tcToast('主号安全保护已激活', `当前账号${acc}不在白名单，已纯原生启动并隔绝辅助`, 'info')
+    tcToast(t('steam.launcher.protectedTitle'), t('steam.launcher.protectedDesc', { acc }), 'info')
     return
   }
 
   // 1. 成功：原生干净启动
   if (res.native && res.success) {
-    tcToast('Steam 已纯原生干净启动', '已隔绝辅助，网游零封号风险', 'success')
+    tcToast(t('steam.launcher.nativeTitle'), t('steam.launcher.nativeDesc'), 'success')
     return
   }
 
   // 2. 成功：辅助挂载并握手成功
   if (res.success && res.handshake) {
-    tcToast('Steam 辅助环境已就绪', '纯净隔离模式已激活', 'success')
+    tcToast(t('steam.launcher.readyTitle'), t('steam.launcher.readyDesc'), 'success')
     return
   }
 
   // 3. 成功：经典模式普通启动
   if (res.success && !res.degraded && !res.error) {
-    tcToast('Steam 客户端已成功启动', '', 'success')
+    tcToast(t('steam.launcher.successTitle'), '', 'success')
     return
   }
 
@@ -45,37 +45,37 @@ export function handleLaunchFeedback(res: any, onRetry?: () => void) {
   if (res.success && res.degraded) {
     let errorDetail = ''
     if (res.error === 'HANDSHAKE_TIMEOUT') {
-      errorDetail = '挂起注入握手超时（通常为杀毒软件阻止进程通信或系统卡顿）'
+      errorDetail = t('steam.launcher.degHandshake')
     } else if (res.error === 'NATIVE_MISSING') {
-      errorDetail = '原生注入引擎模块丢失 (tc_native.node)'
+      errorDetail = t('steam.launcher.degNative')
     } else if (res.error === 'DLL_MISSING') {
-      errorDetail = '底座工具文件缺失 (OpenSteamTool.dll)'
+      errorDetail = t('steam.launcher.degDll')
     } else {
-      errorDetail = res.error || '未知降级原因'
+      errorDetail = res.error || t('steam.launcher.degUnknown')
     }
 
     Swal.fire({
       icon: 'warning',
-      title: 'Steam 已启动，但辅助未能挂载',
+      title: t('steam.launcher.degradedTitle'),
       html: `
         <div style="text-align: left; font-size: 13px; line-height: 1.6; color: #d1d5db;">
-          <p style="margin-bottom: 8px;">系统已为您自动降级为<strong style="color: #10b981;">官方原版环境</strong>启动 Steam，本次运行将不会生效单机辅助。</p>
+          <p style="margin-bottom: 8px;">${t('steam.launcher.degradedDesc')}</p>
           <div style="background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; font-family: monospace; font-size: 12px; color: #f59e0b;">
-            检测详情: ${errorDetail}
+            ${t('steam.launcher.detectDetail')}: ${errorDetail}
           </div>
-          <p style="font-weight: bold; margin-bottom: 4px; color: #fff;">💡 排查与解决方案建议：</p>
+          <p style="font-weight: bold; margin-bottom: 4px; color: #fff;">${t('steam.launcher.solTitle')}</p>
           <ol style="padding-left: 18px; margin: 0; color: #9ca3af;">
-            <li>可点击下方【运行系统自检】快速排查环境与权限；</li>
-            <li>检查 Windows Defender 或杀毒软件是否拦截了注入文件；</li>
-            <li>若注入被系统安全软件持续阻断，可在【设置中心】切换为经典模式。</li>
+            <li>${t('steam.launcher.sol1')}</li>
+            <li>${t('steam.launcher.sol2')}</li>
+            <li>${t('steam.launcher.sol3')}</li>
           </ol>
         </div>
       `,
-      confirmButtonText: '我知道了',
+      confirmButtonText: t('steam.launcher.iKnow'),
       showDenyButton: true,
-      denyButtonText: '运行系统自检',
+      denyButtonText: t('steam.launcher.runDiagnostics'),
       showCancelButton: Boolean(onRetry),
-      cancelButtonText: '重试启动',
+      cancelButtonText: t('steam.launcher.retry'),
       background: '#0f172a',
       color: '#fff',
       confirmButtonColor: '#00f3ff',
@@ -103,31 +103,31 @@ export function handleLaunchFeedback(res: any, onRetry?: () => void) {
     let solution = ''
 
     if (res.error === 'STEAM_NOT_FOUND') {
-      failReason = '未能在系统中找到 steam.exe'
-      solution = '请前往【设置中心 - 宿主环境】手动指定您的 Steam 安装根目录。'
+      failReason = t('steam.launcher.errNotFound')
+      solution = t('steam.launcher.solNotFound')
     } else if (res.error === 'STEAM_STILL_RUNNING') {
-      failReason = 'Steam 仍在后台运行，强杀进程超时'
-      solution = '请打开任务管理器强制结束 steam.exe 进程后重试。'
+      failReason = t('steam.launcher.errStillRunning')
+      solution = t('steam.launcher.solStillRunning')
     } else if (res.error === 'BUSY') {
-      failReason = '已有启动或重启任务正在进行中'
-      solution = '请稍等数秒，避免频繁重复点击。'
+      failReason = t('steam.launcher.errBusy')
+      solution = t('steam.launcher.solBusy')
     } else {
-      failReason = res.error ? t(res.error) : '系统调用异常'
-      solution = '建议点击【运行系统自检】排查原因，或重新启动电脑。'
+      failReason = res.error ? t(res.error) : t('steam.launcher.errSystem')
+      solution = t('steam.launcher.solSystem')
     }
 
     Swal.fire({
       icon: 'error',
-      title: '启动 Steam 失败',
+      title: t('steam.launcher.failTitle'),
       html: `
         <div style="text-align: left; font-size: 13px; line-height: 1.6; color: #d1d5db;">
-          <p style="color: #f87171; font-weight: bold; margin-bottom: 6px;">原因: ${failReason}</p>
-          <p style="color: #9ca3af;">💡 解决指引: ${solution}</p>
+          <p style="color: #f87171; font-weight: bold; margin-bottom: 6px;">${t('steam.launcher.reasonLabel')}: ${failReason}</p>
+          <p style="color: #9ca3af;">${t('steam.launcher.solLabel')}: ${solution}</p>
         </div>
       `,
-      confirmButtonText: '确定',
+      confirmButtonText: t('steam.launcher.confirm'),
       showDenyButton: true,
-      denyButtonText: '运行系统自检',
+      denyButtonText: t('steam.launcher.runDiagnostics'),
       background: '#0f172a',
       color: '#fff',
       confirmButtonColor: '#ef4444',

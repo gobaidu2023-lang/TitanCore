@@ -1,6 +1,8 @@
 // 文件名: src/main/services/LibraryService.ts
 import { Db } from '../db'
 import { titanFetch } from '../TitanNet'
+import { SteamDetector } from './SteamDetector'
+import { TitanProtocol } from './TitanProtocol'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -138,10 +140,22 @@ export class LibraryService {
         return Db.deleteUserLibrary(uid, resourceId)
     }
 
-    static getLibrary(): any[] {
+    static getLibrary(steamPath?: string): any[] {
         const uid = this.getCurrentUid()
         if (!uid) return []
-        return Db.getUserLibrary(uid)
+        const rows = Db.getUserLibrary(uid)
+        const effectiveSteamPath = steamPath || SteamDetector.lastDetectedPath || Db.get<string>('steam_install_path') || ''
+        for (const row of rows) {
+            if (row.type === 'titan_protocol' || String(row.resource_id).startsWith('steam_gate_')) {
+                const appId = String(row.resource_id).replace(/^steam_gate_/, '')
+                if (/^\d+$/.test(appId)) {
+                    const liveAutoUpdate = TitanProtocol.inspectLuaAutoUpdate(effectiveSteamPath, appId)
+                    if (!row.meta || typeof row.meta !== 'object') row.meta = {}
+                    row.meta.autoUpdate = liveAutoUpdate
+                }
+            }
+        }
+        return rows
     }
 
     static toggleLibrary(resourceId: string, extraData?: any): { success: boolean; status?: string; msg?: string } {
@@ -163,7 +177,7 @@ export class LibraryService {
         }
         // ==========================================================================
 
-        const lib = this.getLibrary()
+        const lib = Db.getUserLibrary(uid)
         const exists = lib.find((x: any) => x.resource_id === resourceId)
 
         if (exists) {
@@ -179,7 +193,7 @@ export class LibraryService {
         const uid = this.getCurrentUid();
         if (!uid) return { success: false, msg: 'ERR_LOGIN_REQUIRED' };
 
-        const lib = this.getLibrary();
+        const lib = Db.getUserLibrary(uid);
         const exists = lib.find((x: any) => x.resource_id === resourceId);
         if (!exists) return { success: false, msg: 'ERR_NOT_IN_LIBRARY' };
 
@@ -223,7 +237,9 @@ export class LibraryService {
                 try { cache = JSON.parse(fs.readFileSync(this.MANIFEST_CACHE_PATH, 'utf-8')) } catch {}
             }
 
-            const lib = this.getLibrary()
+            const uid = this.getCurrentUid()
+            if (!uid) return
+            const lib = Db.getUserLibrary(uid)
             const now = Date.now()
 
             // 先组装任务列表，过滤掉非协议资源和无效 appid

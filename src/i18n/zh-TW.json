@@ -85,7 +85,7 @@
     "localAssets": "LOCAL ASSETS",
     "localAssetsSub": "本機工具與修補程式",
     "denuvoDesc": "該資源受 Denuvo 反篡改保護，部署後可能需要您自行提供正版授權。",
-    "dependencyDesc": "該資源標記為需要特定執行環境，直接啟動可能當機，建議先安裝必要的系統元件。",
+    "dependencyDesc": "該遊戲需要安裝啟動修補程式才能玩，詳情頁提供安裝與下載指引。",
     "emptyTitle": "NO SIGNAL",
     "emptyDesc": "未檢索到與 \"{keyword}\" 關聯的節點訊號。系統已記錄此查詢。",
     "returnNexus": "返回繼續搜尋",
@@ -139,15 +139,18 @@
   },
   "discovery": {
     "noDesc": "該項目暫無詳細描述資訊。",
-    "tabSteam": "Steam 精選熱門",
-    "tabCollection": "單機大作",
+    "tabSteam": "Steam遊戲",
+    "tabCollection": "精選專題",
     "tabSearch": "全域搜尋",
-    "tabGame": "連線體驗",
-    "tabTool": "DLC 擴展",
-    "tabPatch": "工具資源",
+    "tabGame": "硬碟遊戲",
+    "tabPatch": "啟動補丁",
     "empty": "暫無資料訊號",
     "unknownTitle": "未知資源",
-    "tabShare": "共享遊戲"
+    "tabShare": "共享遊戲",
+    "shareBannerTitle": "指揮官專屬共享遊戲庫",
+    "shareBannerBadge": "自費福利",
+    "shareBannerDesc": "由開發者自費購買正版 Steam 憑證，給支持 TitanCore 的核心小夥伴們提供力所能及的專屬體驗福利。",
+    "dontShowAgain": "不再顯示"
   },
   "card": {
     "collect": "收藏",
@@ -159,7 +162,8 @@
     "launch": "啟動 ▶",
     "download": "下載 ▼",
     "view": "查看",
-    "getAuthorization": "獲取授權"
+    "getAuthorization": "獲取授權",
+    "launchGame": "啟動遊戲"
   },
   "library": {
     "toggleUpdateFailed": "切換失敗",
@@ -186,7 +190,6 @@
     "removeBatchConfirm": "確認移除",
     "tabSteamLib": "Steam 遊戲庫",
     "tabGame": "單機硬碟遊戲",
-    "tabTool": "工具資源",
     "batchDeploy": "批次入庫",
     "searchPlaceholder": "本機資源檢索...",
     "noAssets": "暫無資產",
@@ -204,7 +207,10 @@
       "onlineLaunch": "開啟連線",
       "disableUpdate": "關閉更新",
       "enableUpdate": "開啟更新",
-      "dlcManage": "DLC管理"
+      "dlcManage": "DLC管理",
+      "gotoPatchCommunity": "前往下載修補程式",
+      "autoInstallPatch": "自動安裝修補程式",
+      "openPatcher": "打開修補程式助手"
     },
     "redeployAll": "全部重新部署",
     "defaultDesc": "個人私有庫本機管理資源。",
@@ -268,7 +274,12 @@
       "failTitle": "啟動失敗",
       "noAppId": "無法取得有效的 AppID",
       "unknownError": "未知錯誤",
-      "errorDefault": "啟動過程中發生錯誤"
+      "errorDefault": "啟動過程中發生錯誤",
+      "launchGame": "啟動遊戲",
+      "notInstalledTitle": "請先在Steam安裝遊戲",
+      "notInstalledDesc": "檢測到該遊戲尚未在 Steam 客戶端完成下載安裝。請先在 Steam 中點擊安裝，下載完成後再點擊啟動。",
+      "successTitle": "正在拉起遊戲",
+      "successDesc": "已觸發 Steam 啟動協議..."
     },
     "uninstall": {
       "title": "確認執行解除安裝？",
@@ -293,7 +304,18 @@
       "errorTitle": "操作失敗"
     },
     "unknownAsset": "未知資產",
-    "tabPatch": "遊戲修補程式"
+    "tabPatch": "遊戲修補程式",
+    "patchNotice": {
+      "title": "安全提示",
+      "content": "遊戲補丁容易被防毒軟體誤報，請提前關閉防毒軟體。若因防毒軟體誤刪導致安裝失敗，請關閉後重新點擊「自動安裝補丁」。",
+      "dontRemind": "我知道了 不再提醒",
+      "installingTitle": "正在檢索並部署補丁...",
+      "installingDesc": "請稍候，這可能需要一點時間",
+      "dispatchedTitle": "補丁部署指令已派發",
+      "dispatchedDesc": "已調起補丁助手進行自動化處理",
+      "failTitle": "部署補丁失敗",
+      "errorTitle": "部署補丁異常"
+    }
   },
   "transmissions": {
     "engineBannerTitle": "下載引擎未就緒：",
@@ -370,26 +392,26 @@
   },
   "settings": {
     "ostModeTitle": "載入模式",
-    "ostModePureDesc": "純淨模式 (Steam 零污染)",
-    "ostModeClassicDesc": "經典模式 (元件在 Steam 目錄)",
+    "ostModePureDesc": "純淨模式 (不碰 Steam 目錄，0 污染，推薦)",
+    "ostModeClassicDesc": "經典模式 (部署到 Steam 目錄，經典方式)",
     "ostModeToClassic": "切換至經典模式",
     "ostModeToPure": "切換至純淨模式",
-    "ostModeSwitching": "切換中(將自動重啟 Steam)...",
-    "pureModeTitle": "切換至純淨無感模式",
-    "pureModeDesc": "透過記憶體掛起注入與匯入表動態代理，實現 Steam 官方安裝目錄零檔案變動、零寫入。輔助元件完全獨立分流，徹底杜絕網遊防作弊誤封風險。",
-    "classicModeTitle": "切換至經典相容模式",
-    "classicModeDesc": "將在 Steam 安裝根目錄下放置代理 DLL（如 xinput1_4.dll）。專治防毒軟體嚴格攔截注入、拒絕記憶體掛起的特殊妖機環境。如非純淨模式被防毒軟體攔截，不建議日常開啟。",
+    "ostModeSwitching": "正在切換模式，將自動重啟 Steam...",
+    "pureModeTitle": "切換至純淨模式",
+    "pureModeDesc": "【潔癖】開發者的心血：不碰steam目錄，0污染，0寫入，強烈推薦用這個！！！注意：該模式必須從TC啟動steam才能生效。",
+    "classicModeTitle": "切換至經典模式",
+    "classicModeDesc": "將DLL工具包部署進steam根目錄，大家熟悉的【經典方式】。",
     "ostModeLaunch": "從 TC 啟動 Steam",
     "ostModeLaunching": "啟動中(可能先關閉 Steam)...",
     "ostModeSwitchDoneTitle": "模式切換完成",
-    "ostModeSwitchDonePure": "已切換至純淨模式，正在掛載元件啟動 Steam...",
-    "ostModeSwitchDoneClassic": "已切換至經典模式，正在啟動 Steam...",
+    "ostModeSwitchDonePure": "已切換到純淨模式，正在啟動 Steam...",
+    "ostModeSwitchDoneClassic": "已切換到經典模式，正在啟動 Steam...",
     "ostModeSwitchFailTitle": "模式切換失敗",
     "ostModeLaunchDoneTitle": "啟動完成",
-    "ostModeLaunchDoneDesc": "Steam 已掛載元件啟動 (注入握手成功)",
-    "ostModeLaunchClassicDesc": "Steam 已啟動 (經典模式生效)",
+    "ostModeLaunchDoneDesc": "Steam 啟動成功，組件已就緒",
+    "ostModeLaunchClassicDesc": "Steam 啟動成功，經典模式已生效",
     "ostModeLaunchDegradedTitle": "Steam 已啟動",
-    "ostModeLaunchDegradedDesc": "元件注入未確認，已透過普通模式啟動。可重試此按鈕。",
+    "ostModeLaunchDegradedDesc": "未檢測到組件，已按普通方式啟動。可重試從 TC 啟動。",
     "ostModeFailTitle": "啟動失敗",
     "ostModeUnknown": "未知錯誤",
     "crMigrateDoneTitle": "遷移完成",
@@ -408,11 +430,17 @@
     "setHotkeyTitle": "點擊設定快速鍵",
     "diagRunning": "檢測中...",
     "diagBtn": "系統自我檢測",
+    "exportLogsBtn": "匯出日誌",
+    "exportLogsRunning": "正在打包...",
+    "exportLogsDoneTitle": "日誌已匯出",
+    "exportLogsDoneDesc": "診斷日誌包已成功儲存至您的桌面，並已自動高亮選取。",
+    "exportLogsFailTitle": "匯出日誌失敗",
     "exp": {
       "title": "實驗功能",
       "btn": "實驗功能",
       "onlineLaunch": "開啟聯機",
       "luaImport": "導入清單",
+      "gameFastLaunch": "遊戲快捷啟動",
       "toolsTitle": "工具箱",
       "tools": {
         "dlc": "DLC管理",
@@ -473,7 +501,7 @@
     "title": "設定中心",
     "connection": {
       "invalidKey": "應急節點 key 無效，請核對後重試",
-      "title": "加密訊號接入點",
+      "title": "伺服器網路節點",
       "node1": "節點 1 (高速)",
       "node2": "節點 2 (流暢)",
       "node3": "節點 3 (備用)",
@@ -487,15 +515,15 @@
       "noOnline": "不支援連線"
     },
     "identity": {
-      "title": "身分識別",
+      "title": "帳號登入",
       "emailPlaceholder": "電子郵件 / 使用者名稱",
       "passwordPlaceholder": "密碼",
       "forgotPassword": "忘記密碼？",
       "login": "登入",
-      "loggingIn": "驗證中...",
+      "loggingIn": "正在登入...",
       "inputRequired": "請輸入電子郵件和密碼",
-      "noAccount": "還沒有帳號？\n透過加密通道註冊。",
-      "register": "註冊新身分",
+      "noAccount": "還沒有帳號？\n點擊前往註冊。",
+      "register": "註冊新帳號",
       "normalUser": "一般使用者",
       "offlineReady": "離線模式已就緒",
       "offlineNotReady": "離線模式未開啟",
@@ -526,24 +554,24 @@
       "st": "ST 通用引擎",
       "ost": "OST 新引擎",
       "switchConfirmTitle": "引擎切換確認",
-      "switchDesc": "您即將接駁至",
-      "switchDescEnd": "引擎核心。",
-      "warningTitle": "極高風險操作警告",
-      "warningText": "接駁新引擎需要植入底層通訊模組，系統將強制結束所有執行中的 Steam 客戶端處理程序。請在繼續前確保您已儲存本機遊戲進度。",
-      "confirmBtn": "強制關閉並接駁",
-      "switchSuccessTitle": "引擎已接管",
-      "switchSuccessDesc": "新核心已完成 DLL 安全掛載，Steam 正在重構啟動。",
-      "updateTitle": "驅動矩陣升級可用",
-      "updateDesc": "檢測到系統級核心引擎 [{engine}] 已發布 v{version} 版本。",
-      "updateDetail": "最新引擎已深度適配 Steam 底層網路更迭，修復部分線路阻斷問題。建議立即接駁。",
-      "updateWarning": "【警告】更新操作將強制終止 Steam 客戶端處理程序，請確保雲端存檔已同步。",
-      "updateBtnCancel": "暫不接駁",
-      "updateBtnConfirm": "立即修復更新",
-      "updatingText": "正在覆寫協議...",
+      "switchDesc": "準備切換至 ",
+      "switchDescEnd": " 引擎。",
+      "warningTitle": "切換引擎提示",
+      "warningText": "切換引擎將自動重啟 Steam，請在繼續前保存好正在運行的遊戲進度。",
+      "confirmBtn": "重啟 Steam 並切換",
+      "switchSuccessTitle": "引擎切換完成",
+      "switchSuccessDesc": "新引擎已配置完畢，正在啟動 Steam。",
+      "updateTitle": "發現引擎新版本",
+      "updateDesc": "檢測到核心引擎 <span class=\"text-[#00f3ff] font-bold\">[{engine}]</span> 發布了 <span class=\"text-accent font-bold\">v{version}</span> 版本。",
+      "updateDetail": "新版本修復了部分啟動與網路問題，建議更新。",
+      "updateWarning": "更新過程中將關閉 Steam，請確保遊戲存檔已保存。",
+      "updateBtnCancel": "稍後更新",
+      "updateBtnConfirm": "立即更新",
+      "updatingText": "正在下載更新...",
       "steamtoolsName": "SteamTools (ST)",
       "ostName": "Original Steam Tools (OST)",
-      "updateSuccessTitle": "引擎接駁成功",
-      "updateFailTitle": "覆寫失敗",
+      "updateSuccessTitle": "引擎更新成功",
+      "updateFailTitle": "更新失敗",
       "updateFailDefault": "未知阻擋"
     },
     "maintain": {
@@ -617,7 +645,17 @@
     "docs": {
       "btnTitle": "常見問題彙總",
       "openBtn": "開啟使用指南"
-    }
+    },
+    "pureCardTitle": "純淨模式 · 零檔案污染",
+    "pureBadge": "強烈推薦",
+    "pureTag1": "不碰 Steam 目錄",
+    "pureTag2": "0 污染 0 寫入",
+    "pureTag3": "必須從 TC 啟動生效",
+    "classicCardTitle": "經典模式 · 相容兜底",
+    "classicBadge": "經典方式",
+    "classicTag1": "部署進 Steam 根目錄",
+    "classicTag2": "大家熟悉的經典方式",
+    "classicTag3": "直接開 Steam 也能用"
   },
   "feedback": {
     "pageTitle": "星際連線",
@@ -696,7 +734,16 @@
     "installed": "已安裝",
     "notInstalled": "未安裝",
     "installPath": "安裝路徑",
-    "unknown": "未知"
+    "unknown": "未知",
+    "notice": {
+      "copied": "已複製",
+      "copyCodePrefix": "碼: ",
+      "copyPwdPrefix": "解壓: ",
+      "copyCodeTitle": "點擊複製提取碼: ",
+      "copyPwdTitle": "點擊複製解壓密碼: ",
+      "directOpen": "直達",
+      "close": "關閉"
+    }
   },
   "detail": {
     "closeEsc": "關閉 (ESC)",
@@ -779,6 +826,9 @@
     "mirrorDirect": "直連",
     "terminalTitle": "TITAN 終端機",
     "terminalDone": "操作完成",
+    "guideTitle": "新手排障指南",
+    "guideStep1": "請在 Steam 客戶端遊戲庫中找到本作直接安裝執行。",
+    "guideStep2": "如果 Steam 裡沒有，就從 TC 重啟一下，V社網路抽風是老毛病了。",
     "terminalFailed": "操作中斷",
     "terminalRunning": "正在掛載底層協議，請保持視窗開啟",
     "btnFinish": "完成",
@@ -787,6 +837,10 @@
     "radarDenuvoDesc": "該遊戲受加密保護，部署後仍可能需要購買正版授權。建議先確認是否擁有該遊戲。",
     "radarDependencyTitle": "執行環境提示",
     "radarDependencyDesc": "執行前可能需要安裝額外元件（請搜尋安裝該遊戲的修補程式）。如安裝修補程式後仍然無法啟動，請在發送心願處聯絡我們。",
+    "radarYellowFreeTitle": "該遊戲需要安裝啟動修補程式才能玩！",
+    "radarYellowFreeDesc": "請前往TC官方社群下載修補程式和安裝工具，拖進去就能自動生效。也可以贊助支援一下TC，直接在數位倉庫『右鍵一鍵安裝修補程式』。",
+    "radarYellowVipTitle": "修補程式版本適配提示",
+    "radarYellowVipDesc": "尊貴的 TC玩家，本遊戲已鎖定修補程式適配的版本，入庫下載完，打開TC【數位倉庫】，右鍵 安裝修補程式 即可。",
     "steamProtocolDesc": "Steam 協議已連線\nAppID: {appId}",
     "terminalAuthRequired": "請先登入後再下載",
     "terminalGatewayError": "取得連結失敗：{msg}。請檢查網路連線，或稍後重試",
@@ -817,9 +871,11 @@
     "deployingNoClose": "部署中請勿關閉",
     "doNotInterrupt": "請勿中斷進程",
     "sharegame": {
+      "prereqTitle": "前置必要條件：必須提前在 Steam 下載安裝完畢！",
+      "prereqDesc": "官方正版憑據生成後僅有約 30 分鐘啟用有效窗口。請務必提前在 Steam 入庫並【徹底下載安裝完畢】該遊戲後再點擊獲取憑據！若提前出票，憑據將在漫長的下載過程中過期作廢；且受每日單人單遊戲限領 1 次鐵律保護，今日將無法重新補領。",
       "authorizing": "正在授權...",
       "authSuccessTitle": "【{name}】授權成功",
-      "authSuccessDesc": "授權憑據已寫入登錄檔，請徹底重啟 Steam 後啟動遊戲",
+      "authSuccessDesc": "授權憑證已成功寫入註冊表！請徹底退出並重啟一次 Steam 客戶端即可暢玩。",
       "ready": "✓ 授權憑據已更新就緒",
       "noAccounts": "未檢測到本機 Steam 登入帳號",
       "error": {
@@ -829,7 +885,18 @@
         "429": "請求過於頻繁或系統繁忙，請稍後再試",
         "500": "共享閘道伺服器異常，請稍後重試",
         "503": "共享授權服務維護中"
-      }
+      },
+      "sponsorNoticeTitle": "憑證配額提示",
+      "sponsorNoticeDesc": "本遊戲由作者個人自費購買正版賬號並提供官方 Steam 憑證支持。因 Denuvo 官方對單一賬號施加了極嚴格的每日啟用限制（每個遊戲一天僅能生成 5 張有效票據），為保證憑證不被濫用失效，此福利僅向 LV2 永久贊助核心小夥伴開放，感謝各位的理解與支持！",
+      "gotIt": "我知道了",
+      "quotaTitle": "全服當日配額",
+      "quotaRemaining": "剩餘 {remaining} / {limit} 張",
+      "quotaFull": "已領完 (0/5) · 最早 {time} 釋放新名額",
+      "accountLabel": "授權給當前設備賬號:",
+      "restartSteamHint": "請確認所選賬號已在 Steam 本地正常登錄過。憑證寫入後，必須徹底退出並重啟一次 Steam 客戶端方可生效。",
+      "authBtnReady": "⚡ 獲取正版免密憑證",
+      "authBtnFull": "今日配額已滿 (0/5)",
+      "authBtnWorking": "正在向 Steam 專線獲取憑證..."
     }
   },
   "vault": {
@@ -940,10 +1007,10 @@
     "ready": "READY"
   },
   "welcome": {
-    "firstLogin": "首次使用請完成身分識別登入",
+    "firstLogin": "首次使用請先登入帳號",
     "switchSettings": "可解鎖超過 7 萬個 Steam 遊戲，每天持續同步更新",
     "browseDiscovery": "資源探索與全域搜尋 - 取得全部可用資源",
-    "initNeuralLink": "初始化神經連線"
+    "initNeuralLink": "開始探索"
   },
   "register": {
     "title": "註冊新身分",
@@ -965,7 +1032,42 @@
     "sourceAuto": "自動偵測",
     "sourceNone": "連線中斷（未找到）",
     "pathNotFound": "未找到有效的 Steam 核心路徑，請手動指派",
-    "driverCore": "驅動核心環境"
+    "driverCore": "驅動核心環境",
+    "launcher": {
+      "protectedTitle": "主號安全保護已啟動",
+      "protectedDesc": "目前帳號{acc}不在白名單，已純原生啟動並隔絕輔助",
+      "nativeTitle": "Steam 已純原生乾淨啟動",
+      "nativeDesc": "已隔絕輔助，線上遊戲零封鎖風險",
+      "readyTitle": "Steam 輔助環境已就緒",
+      "readyDesc": "純淨隔離模式已啟動",
+      "successTitle": "Steam 客戶端已成功啟動",
+      "degradedTitle": "Steam 已啟動，但輔助未能掛載",
+      "degradedDesc": "系統已為您自動降級為<strong style=\"color: #10b981;\">官方原版環境</strong>啟動 Steam，本次執行將不會生效單機輔助。",
+      "detectDetail": "檢測詳情",
+      "degHandshake": "掛起注入握手逾時（通常為防毒軟體封鎖處理序通訊或系統延遲）",
+      "degNative": "原生注入引擎模組遺失 (tc_native.node)",
+      "degDll": "底座工具檔案缺失 (OpenSteamTool.dll)",
+      "degUnknown": "未知降級原因",
+      "solTitle": "💡 排查與解決方案建議：",
+      "sol1": "可點擊下方【執行系統自我檢測】快速排查環境與權限；",
+      "sol2": "檢查 Windows Defender 或防毒軟體是否攔截了注入檔案；",
+      "sol3": "若注入被系統安全軟體持續阻斷，可在【設定中心】切換為經典模式。",
+      "iKnow": "我知道了",
+      "runDiagnostics": "執行系統自我檢測",
+      "retry": "重試啟動",
+      "failTitle": "啟動 Steam 失敗",
+      "reasonLabel": "原因",
+      "solLabel": "💡 解決指引",
+      "errNotFound": "未能於系統中找到 steam.exe",
+      "solNotFound": "請前往【設定中心 - 宿主環境】手動指定您的 Steam 安裝根目錄。",
+      "errStillRunning": "Steam 仍在背景執行，強制結束處理序逾時",
+      "solStillRunning": "請開啟工作管理員強制結束 steam.exe 處理序後重試。",
+      "errBusy": "已有啟動或重新啟動工作正在進行中",
+      "solBusy": "請稍候數秒，避免頻繁重複點擊。",
+      "errSystem": "系統呼叫異常",
+      "solSystem": "建議點擊【執行系統自我檢測】排查原因，或重新啟動電腦。",
+      "confirm": "確定"
+    }
   },
   "offlineMode": {
     "title": "離線模式",
@@ -1262,15 +1364,15 @@
     "patch": {
       "denuvo": {
         "title": "D 加密遊戲",
-        "desc": "目前僅支援已有 voice38 修補程式的 D 加密遊戲。無修補程式資源入庫後無法啟動，請耐心等待後續更新或更換其他資源。"
+        "desc": "目前已內建所有D加密遊戲補丁，支援一鍵自動安裝與手動拖曳匯入助手工具安裝。"
       },
       "movieGame": {
-        "title": "互動影視 / 連網驗證",
-        "desc": "大部分影視類遊戲內建連網驗證，必須使用專用修補程式方可啟動。直接入庫通常無法執行，請關注後續更新。"
+        "title": "國產影遊 / 連網驗證",
+        "desc": "大部分影視類遊戲內建連網驗證，必須使用專用補丁方可啟動。直接入庫通常無法運行，請在社群關注補丁更新。"
       },
       "onlineFix": {
-        "title": "連線修補程式",
-        "desc": "部分線上遊戲需配合 onlinefix 連線修補程式才能連網遊玩。強烈建議使用小號測試，避免主帳號受到限制。"
+        "title": "連機補丁",
+        "desc": "請前往社群下載TC連機補丁助手，同步大毛主站，支援超過3000+遊戲。"
       }
     },
     "multiplayer": {
@@ -1286,29 +1388,29 @@
     "dlc": {
       "unlock": {
         "title": "如何解鎖DLC",
-        "desc": "少部分遊戲支援單獨搜尋 APPID 解鎖 DLC，大部分遊戲請直接搜尋入庫主程式，主程式已包含完整 DLC。【不保證所有遊戲全 DLC】"
+        "desc": "入庫遊戲時，已附帶了DLC。【不保證所有遊戲滿DLC】"
       },
       "missing": {
-        "title": "DLC遺失問題",
-        "desc": "部分遊戲可能遺失 DLC，請透過【側邊欄】發送心願，回報遺失的 DLC 和遊戲，我們會盡快更新補錄。"
+        "title": "DLC單獨解鎖",
+        "desc": "設定-實驗功能-DLC管理工具，可以單獨補全DLC，適用於給本體補齊DLC【部分連網驗證DLC無法補入】"
       },
       "safety": {
-        "title": "對主帳號有何影響",
-        "desc": "沒有影響，無論使用專用的 DLC 解鎖工具或入庫方式解鎖 DLC，都對主帳號沒有影響，這比入庫安全 10,000 倍。"
+        "title": "DLC更新",
+        "desc": "如果新出的DLC搜尋不到，請在側欄發訊息給我們，一定會更新的！"
       }
     },
     "builtin": {
       "download": {
-        "title": "單機遊戲資源如何下載",
-        "desc": "內建的單機遊戲均為實測後可執行、安全、無毒的版本，請使用 TC 內建的下載引擎下載，無需雲端硬碟，跑滿您的寬頻。"
+        "title": "ASF掛卡助手",
+        "desc": "這個懂的都懂，給大號買的遊戲們掉卡，然後去steam市場賣掉，餘額可以買遊戲。"
       },
       "engine": {
         "title": "下載引擎如何使用",
-        "desc": "內建 aria2c 核心，16 執行緒並行，僅支援 HTTP 協議連結。點選 ＋ 貼上下載連結即可，對 N 網 MOD 直連做了適配最佳化，使用前請先修改下載檔案儲存位置。"
+        "desc": "內建aria2c核心，16執行緒並發，僅支援HTTP協議連結，點＋號貼上下載連結即可，對N網MOD直鏈做了適配最佳化，使用前請先修改下載檔案儲存的位置。"
       },
       "minigame": {
         "title": "小遊戲有什麼用",
-        "desc": "沒什麼用，玩 TC 原創的小遊戲，可以用 core 積分兌換更多下載次數，隨著作者學習的技能越來越多，遊戲會越來越好玩。"
+        "desc": "可兌換下載額度，玩TC原創的小遊戲，隨著作者學習的技能越來越多，遊戲會越來越好玩。"
       }
     },
     "faq": {
@@ -1340,13 +1442,9 @@
         "q": "遊戲無法啟動",
         "a": "通常是因為入庫了目前不支援的資源類型（D 加密 / 影視遊戲 / 線上連線遊戲 / 第三方平台如 EA、Ubisoft 啟動器）。建議等待修補程式或更換遊戲。"
       },
-      "launch54": {
-        "q": "遊戲啟動報錯 54",
-        "a": "通常是因為使用 ST 引擎或遊戲啟動器綁定 Steam 驗證導致。可切換至 OST 引擎，或使用 Steamless 工具處理（全網搜尋：steamless）。"
-      },
       "updateFail": {
         "q": "遊戲無法更新 / 提示版本過舊",
-        "a": "通常是因為鎖定了遊戲清單版本。使用最新版 TC 重新入庫該遊戲即可解決。"
+        "a": "請在數位倉庫右鍵開啟更新。"
       }
     },
     "title": "使用指南"
@@ -1524,5 +1622,72 @@
     "gamesUnit": "款",
     "managePrivileges": "點擊管理終端特權",
     "connectNetwork": "點擊接入泰坦核心網路"
+  },
+  "shareModal": {
+    "badge": "正版共享福利",
+    "subtitle": "開發者全額自費購買正版憑證，供核心支持者免費體驗",
+    "lotteryBadge": "平台號池輪盤",
+    "lotterySubtitle": "指揮官專屬號池輪盤 · 每次消耗 10 額度 · 試試手氣",
+    "lotteryCostLabel": "單次抽取:",
+    "lotteryCostUnit": "10 下載額度",
+    "lotteryMyBalanceLabel": "我的可用額度:",
+    "lotteryBalanceUnit": "點",
+    "lotteryRoundLabel": "本輪試手氣:",
+    "lotteryRoundUnit": "/ {max} 次",
+    "lotteryStatus": "輪盤號池",
+    "lotteryStatusCd": "12h冷卻中",
+    "lotteryNoticeTitle": "共享號源試手氣提醒",
+    "lotteryNoticeTag": "{max}號輪轉·12h冷卻",
+    "lotteryNoticeDesc": "共享號無法保證100%成功，花費10點額度賭一次，今天不行明天再來，總能成的！",
+    "lotteryNoticeInstallWarn": "⚠️ 必須先在 Steam 下載安裝好遊戲再來抽取！票據有效期僅 30 分鐘，獲取後請立即點擊下方按鈕重啟 Steam 啟動一次遊戲。",
+    "btnLotteryReady": "🎰 花費 {cost} 額度試手氣 (第 {cur} / {max} 次)",
+    "btnLotteryNoQuota": "下載額度不足 (抽取需 10 點)",
+    "btnLotteryWorking": "正在向號池抽取憑證...",
+    "close": "關閉視窗",
+    "appId": "Steam AppID:",
+    "defaultTitle": "Steam 共享遊戲",
+    "defaultDesc": "開發者自費購買正版 Steam 憑證，給支持 TitanCore 的核心夥伴提供力所能及的專屬體驗福利。",
+    "tagShared": "共享遊戲",
+    "tagLegit": "正版憑證",
+    "quotaRemainingLabel": "當前遊戲 當前剩餘:",
+    "quotaSlots": "/ 5",
+    "userDailyLabel": "當日可用:",
+    "userDailyLimit": "/ 2",
+    "statusAvailable": "名額充裕",
+    "statusCooling": "排隊冷卻中",
+    "noticeTitle": "請先在 Steam 下載安裝完遊戲，再來領取憑證！",
+    "noticeDesc": "憑證領取後約 30 分鐘過期。請務必提前在 Steam 入庫並【徹底安裝完畢】後再領；單人單遊戲每天限領 1 次，若提前出票在漫長下載中失效，今日將無法補發。",
+    "targetAccountLabel": "將要授權給當前登入帳號",
+    "refreshAccount": "重新整理",
+    "refreshAccountTitle": "在 Steam 客戶端切換帳號後，點此重新整理",
+    "activeBadge": "當前活躍",
+    "detectingAccount": "正在偵測 Steam 當前登入帳號...",
+    "noAccountDetected": "未偵測到登入中的 Steam 帳號，請先在電腦啟動 Steam",
+    "accountSwitchHint": "💡 如果帳號不對，請在 Steam 切換帳號後再來操作。",
+    "successTitle": "憑證已成功導入本機！",
+    "expireRemaining": "有效期限剩餘:",
+    "timeFormat": "{m}分{s}秒",
+    "successDesc": "票據有效期僅 30 分鐘！請先點擊下方按鈕重啟 Steam 使憑證生效，再去 Steam 啟動一次遊戲完成啟用。",
+    "restartSteamBtn": "重啟 Steam (使憑證生效)",
+    "launchBtnWorking": "正在重啟 Steam 注入憑證...",
+    "launchBtn": "啟動遊戲(快去steam啟動)",
+    "btnWorking": "正在領取中...",
+    "btnClaimed": "您今日已領過本作 (單遊戲每天限1次)",
+    "btnLimitReached": "今日體驗額度已用完 (每天限2款)",
+    "btnQuotaFull": "今日名額已領滿 (請等待冷卻釋放)",
+    "btnNoAccount": "未偵測到登入中的 Steam 帳號",
+    "btnReady": "立即領取正版憑證",
+    "sponsorModalTitle": "指揮官專屬自費福利說明",
+    "sponsorModalP1": "共享遊戲庫由開發者以個人資金全額自費購買正版憑證，旨在為長期支持 TitanCore 的核心夥伴提供力所能及的專屬體驗福利。",
+    "sponsorModalP2": "受物理單遊戲每日 5 張票及自費資金規模限制，本功能目前僅面向永久贊助的指揮官專屬開放，望理解見諒。",
+    "gotIt": "我知道了",
+    "toastLoginFirst": "請先登入 Titan 帳號",
+    "toastRestartingSteam": "正在重啟 Steam 刷新憑證...",
+    "toastLaunchSuccess": "遊戲已成功喚起！",
+    "toastAuthSuccess": "憑證已成功導入本機！",
+    "toastAuthFailedDefault": "未能成功獲取授權憑證，請稍後重試",
+    "toastNetworkTimeout": "網路連線逾時，請重試",
+    "btnLotteryCd": "本輪 {max} 次已用完 (12小時冷卻中)",
+    "lotteryTurnCount": "已轉 {c} / {max} 次 (12h)"
   }
 }

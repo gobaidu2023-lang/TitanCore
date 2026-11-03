@@ -6,6 +6,7 @@
     ref="cardRootRef"
     class="anime-card-root group relative w-full cursor-pointer select-none z-0 will-change-transform"
     @click="emit('action')"
+    @mouseenter="handleMouseEnter"
     @mousemove="handleMouseMove"
     @mouseleave="handleMouseLeave"
     @contextmenu.prevent="emit('contextmenu', { id, x: $event.clientX, y: $event.clientY, title, type, installed: isInstalled, path: '' })"
@@ -41,13 +42,11 @@
         <div class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none"></div>
       </div>
 
-      <!-- 3. Inspira UI Card Spotlight 柔粉流光聚光灯 (跟随鼠标游走的光晕) -->
+      <!-- 3. Inspira UI Card Spotlight 柔粉流光聚光灯 (跟随鼠标游走的光晕，零响应式 Diff 开销) -->
       <div 
-        v-if="isHovered"
-        class="pointer-events-none absolute inset-0 rounded-[30px] z-20 transition-opacity duration-200"
-        :style="{
-          background: `radial-gradient(280px circle at ${mouseX}px ${mouseY}px, rgba(255, 182, 218, 0.35), transparent 70%)`
-        }"
+        class="pointer-events-none absolute inset-0 rounded-[30px] z-20 transition-opacity duration-300"
+        :class="isHovered ? 'opacity-100' : 'opacity-0'"
+        style="background: radial-gradient(280px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(255, 182, 218, 0.35), transparent 70%);"
       ></div>
 
       <!-- 4. 左上角：分类徽标 (仅合集或特殊分类时轻量展示) -->
@@ -60,22 +59,36 @@
         <span>{{ badgeText }}</span>
       </div>
 
-      <!-- 5. 底部纯净大字标题：1:1 还原设计图，纯白大粗体直接印在海报底端 -->
-      <div class="relative z-20 px-4 pb-3.5 pt-2 flex items-center justify-between gap-2 pointer-events-none">
-        <h3 
-          class="text-white font-black text-[14.5px] leading-tight truncate tracking-wide drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] font-sans"
-          :title="title"
+      <!-- 5. 底部纯净大字标题与战术发射台：1:1 保护立绘艺术主体，绝不遮挡角色核心 -->
+      <div class="relative z-20 px-3.5 pb-3 pt-2 flex flex-col justify-end pointer-events-none">
+        <div class="flex items-center justify-between gap-2">
+          <h3 
+            class="text-white font-black text-[17px] leading-tight truncate tracking-wide drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] font-sans transition-colors duration-250 group-hover:text-pink-200"
+            :title="title"
+          >
+            {{ title }}
+          </h3>
+          
+          <!-- 微型状态光珠：已安装(蓝) / 已在库(粉)，精致不喧宾夺主 -->
+          <span 
+            v-if="isInstalled || isInLibrary"
+            class="w-2 h-2 rounded-full flex-shrink-0 shadow-sm transition-transform group-hover:scale-110"
+            :class="isInstalled ? 'bg-[#38bdf8] shadow-[0_0_8px_rgba(56,189,248,0.9)]' : 'bg-[#ea8fb4] shadow-[0_0_8px_rgba(234,143,180,0.9)]'"
+            :title="isInstalled ? t('card.launch') : t('card.inLibrary')"
+          ></span>
+        </div>
+
+        <!-- 仓库专属：仅开启实验功能 titan_protocol 游戏卡片【悬停才浮现初樱晶莹启动台】平时纯净无遮挡 -->
+        <div 
+          v-if="canShowLaunchButton"
+          class="h-0 opacity-0 translate-y-2 group-hover:h-9 group-hover:opacity-100 group-hover:translate-y-0 group-hover:mt-2 transition-all duration-300 ease-out pointer-events-auto"
         >
-          {{ title }}
-        </h3>
-        
-        <!-- 微型状态光珠：已安装(蓝) / 已在库(粉)，精致不喧宾夺主 -->
-        <span 
-          v-if="isInstalled || isInLibrary"
-          class="w-2 h-2 rounded-full flex-shrink-0 shadow-sm"
-          :class="isInstalled ? 'bg-[#38bdf8] shadow-[0_0_8px_rgba(56,189,248,0.9)]' : 'bg-[#ea8fb4] shadow-[0_0_8px_rgba(234,143,180,0.9)]'"
-          :title="isInstalled ? t('card.launch') : t('card.inLibrary')"
-        ></span>
+          <TitanLaunchButton 
+            :status="resolvedLaunchStatus"
+            theme="anime"
+            @launch="emit('launch', id)"
+          />
+        </div>
       </div>
 
       <!-- 6. 悬停快捷行动层：Q 弹果冻弹簧手感 (肉垫回弹) -->
@@ -110,8 +123,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import TitanImage from '../../components/TitanImage.vue'
+import TitanLaunchButton from '../../components/TitanLaunchButton.vue'
+import { useLibraryStore } from '../../stores/libraryStore'
 import { t } from '../../i18n'
 
 const props = defineProps<{
@@ -125,44 +140,80 @@ const props = defineProps<{
   isInstalling?: boolean
   hideControls?: boolean
   localSteamFirst?: boolean
+  showLaunchButton?: boolean
+  launchStatus?: 'ready' | 'running'
 }>()
 
 const emit = defineEmits<{
   (e: 'action'): void
   (e: 'collect'): void
+  (e: 'launch', id: string | number): void
   (e: 'contextmenu', payload: any): void
 }>()
 
 const cardRootRef = ref<HTMLElement | null>(null)
 const cardBodyRef = ref<HTMLElement | null>(null)
 const isHovered = ref(false)
-const mouseX = ref(0)
-const mouseY = ref(0)
 const rotateX = ref(0)
 const rotateY = ref(0)
+let cachedRect: DOMRect | null = null
+let rafId: number | null = null
 
-// Inspira UI: 3D 浮雕视差微倾斜与光斑追踪
-const handleMouseMove = (e: MouseEvent) => {
+const libraryStore = useLibraryStore()
+const resolvedLaunchStatus = computed<'ready' | 'running'>(() => {
+  if (props.launchStatus) return props.launchStatus
+  return libraryStore.isAppRunning(props.id) ? 'running' : 'ready'
+})
+
+const canShowLaunchButton = computed(() => {
+  return props.showLaunchButton && props.type === 'titan_protocol' && (libraryStore.prefEnableGameFastLaunch ?? libraryStore.prefEnableCardLaunch)
+})
+
+// Inspira UI: 零强制重排 (Zero Forced-Reflow) + rAF 帧合并节流
+const handleMouseEnter = () => {
   isHovered.value = true
-  if (!cardRootRef.value) return
-  const rect = cardRootRef.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
-  mouseX.value = x
-  mouseY.value = y
-  
-  const centerX = rect.width / 2
-  const centerY = rect.height / 2
-  // ±3 度柔和浮雕倾斜
-  rotateX.value = -((y - centerY) / centerY) * 3
-  rotateY.value = ((x - centerX) / centerX) * 3
+  if (cardRootRef.value) {
+    cachedRect = cardRootRef.value.getBoundingClientRect()
+  }
+}
+
+const handleMouseMove = (e: MouseEvent) => {
+  if (!isHovered.value) isHovered.value = true
+  const root = cardRootRef.value
+  if (!root) return
+  if (!cachedRect) {
+    cachedRect = root.getBoundingClientRect()
+  }
+  const x = e.clientX - cachedRect.left
+  const y = e.clientY - cachedRect.top
+  root.style.setProperty('--spot-x', `${x}px`)
+  root.style.setProperty('--spot-y', `${y}px`)
+
+  if (rafId) return
+  rafId = requestAnimationFrame(() => {
+    rafId = null
+    if (!cachedRect) return
+    const centerX = cachedRect.width / 2
+    const centerY = cachedRect.height / 2
+    rotateX.value = -((y - centerY) / centerY) * 3
+    rotateY.value = ((x - centerX) / centerX) * 3
+  })
 }
 
 const handleMouseLeave = () => {
   isHovered.value = false
+  cachedRect = null
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
   rotateX.value = 0
   rotateY.value = 0
 }
+
+onUnmounted(() => {
+  if (rafId) cancelAnimationFrame(rafId)
+})
 
 // 按钮文本接入标准化 i18n
 const primaryButtonText = computed(() => {

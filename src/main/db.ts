@@ -21,6 +21,7 @@ export class Db {
     if (this.isReady) return { success: true }
 
     const existing = this.findExistingDb()
+    console.log('[DB] 开始检测数据库环境, 发现存量数据库路径:', existing || '无(将新建)')
     if (!existing) {
       this.firstLaunchDetected = true
     }
@@ -85,6 +86,7 @@ export class Db {
 
   private static openDb(): { success: boolean; reset?: boolean; error?: string } {
     try {
+      console.log('[DB] 正在打开 SQLite 数据库文件:', this.dbPath)
       this.db = new Database(this.dbPath, { fileMustExist: false })
       this.db.pragma('journal_mode = WAL')
       this.db.pragma('synchronous = NORMAL')
@@ -148,6 +150,21 @@ export class Db {
       CREATE INDEX IF NOT EXISTS idx_tr_updated ON titan_resources(updated_at);
       CREATE INDEX IF NOT EXISTS idx_tr_policy ON titan_resources(policy_vip, policy_price);
     `)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS titan_resources_v2 (
+        id TEXT PRIMARY KEY, type TEXT NOT NULL, title TEXT,
+        policy_vip INTEGER DEFAULT 0, policy_price INTEGER DEFAULT 0,
+        policy_start INTEGER DEFAULT 0, policy_end INTEGER DEFAULT 0,
+        tags TEXT, cover TEXT, rating REAL, meta_json TEXT,
+        updated_at INTEGER, status TEXT DEFAULT 'active',
+        time_action TEXT DEFAULT 'hide', desc TEXT,
+        collection_ids TEXT DEFAULT '[]', hide_in_main INTEGER DEFAULT 0,
+        target_id TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_tr2_updated ON titan_resources_v2(updated_at);
+      CREATE INDEX IF NOT EXISTS idx_tr2_policy ON titan_resources_v2(policy_vip, policy_price);
+    `)
+
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS user_library (
@@ -165,6 +182,13 @@ export class Db {
         user_id TEXT NOT NULL, date TEXT NOT NULL,
         count INTEGER DEFAULT 0, updated_at INTEGER,
         PRIMARY KEY (user_id, date)
+      );
+      CREATE TABLE IF NOT EXISTS sharegate_ticket_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        app_id TEXT NOT NULL,
+        source_steamid TEXT NOT NULL,
+        target_steamid TEXT NOT NULL,
+        created_at TEXT NOT NULL
       );
     `)
 

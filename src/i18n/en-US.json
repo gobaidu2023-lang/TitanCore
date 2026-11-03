@@ -85,7 +85,7 @@
     "localAssets": "Local Tools",
     "localAssetsSub": "Tools & Patches",
     "denuvoDesc": "Protected by Denuvo. A genuine license may still be required.",
-    "dependencyDesc": "Requires specific runtime files. Install required components before running.",
+    "dependencyDesc": "Startup patch required. See game details for install instructions.",
     "emptyTitle": "No Results",
     "emptyDesc": "No games found matching \"{keyword}\". Request has been logged.",
     "returnNexus": "Back to Search",
@@ -139,15 +139,18 @@
   },
   "discovery": {
     "noDesc": "No description available.",
-    "tabSteam": "Steam Hot Picks",
-    "tabCollection": "Single Player",
+    "tabSteam": "Steam Games",
+    "tabCollection": "Featured",
     "tabSearch": "Search",
-    "tabGame": "Multiplayer",
-    "tabTool": "DLCs",
-    "tabPatch": "Tools",
+    "tabGame": "PC Games",
+    "tabPatch": "Patches",
     "empty": "No games found",
     "unknownTitle": "Unknown Game",
-    "tabShare": "Shared Games"
+    "tabShare": "Shared Games",
+    "shareBannerTitle": "Commander's Shared Vault",
+    "shareBannerBadge": "Dev Perk",
+    "shareBannerDesc": "Legit Steam credentials bought out of my own pocket as an exclusive perk for our core supporters.",
+    "dontShowAgain": "Don't show again"
   },
   "card": {
     "collect": "Favorite",
@@ -159,7 +162,8 @@
     "launch": "Play ▶",
     "download": "Download ▼",
     "view": "Details",
-    "getAuthorization": "Get Access"
+    "getAuthorization": "Get Access",
+    "launchGame": "Launch Game"
   },
   "library": {
     "toggleUpdateFailed": "Update toggle failed",
@@ -186,7 +190,6 @@
     "removeBatchConfirm": "Remove Entries",
     "tabSteamLib": "Steam",
     "tabGame": "Standalone",
-    "tabTool": "Tools",
     "batchDeploy": "Batch Deploy",
     "searchPlaceholder": "Filter library...",
     "noAssets": "No games found",
@@ -204,7 +207,10 @@
       "onlineLaunch": "Play Online",
       "disableUpdate": "Disable Auto-Update",
       "enableUpdate": "Enable Auto-Update",
-      "dlcManage": "DLC Manager"
+      "dlcManage": "DLC Manager",
+      "gotoPatchCommunity": "Download Patch",
+      "autoInstallPatch": "Auto Install Patch",
+      "openPatcher": "Launch Patcher"
     },
     "redeployAll": "Redeploy All",
     "defaultDesc": "Local library entry.",
@@ -268,7 +274,12 @@
       "failTitle": "Launch Failed",
       "noAppId": "Invalid AppID",
       "unknownError": "Unknown error",
-      "errorDefault": "Failed to launch game"
+      "errorDefault": "Failed to launch game",
+      "launchGame": "Launch Game",
+      "notInstalledTitle": "Please Install in Steam First",
+      "notInstalledDesc": "This game has not been installed in Steam yet. Please install it in Steam first, and launch after download completes.",
+      "successTitle": "Launching Game",
+      "successDesc": "Steam launch protocol triggered..."
     },
     "uninstall": {
       "title": "Uninstall Game?",
@@ -293,7 +304,18 @@
       "errorTitle": "Action Failed"
     },
     "unknownAsset": "Unknown Item",
-    "tabPatch": "Patches"
+    "tabPatch": "Patches",
+    "patchNotice": {
+      "title": "Security Notice",
+      "content": "Game patches may trigger false positive antivirus detections. Please disable antivirus before installing. If installation fails due to deletion, disable antivirus and retry 'Auto Install Patch'.",
+      "dontRemind": "Do not remind me again",
+      "installingTitle": "Retrieving and deploying patch...",
+      "installingDesc": "Please wait, this may take a moment",
+      "dispatchedTitle": "Patch deployment dispatched",
+      "dispatchedDesc": "Patch assistant has been launched for automatic setup",
+      "failTitle": "Patch deployment failed",
+      "errorTitle": "Patch deployment error"
+    }
   },
   "transmissions": {
     "engineBannerTitle": "Download engine offline:",
@@ -370,26 +392,26 @@
   },
   "settings": {
     "ostModeTitle": "Engine Mode",
-    "ostModePureDesc": "Pure Mode (Clean Steam)",
-    "ostModeClassicDesc": "Classic Mode (In-Steam)",
+    "ostModePureDesc": "Pure Mode (leaves Steam untouched, 0 clutter, recommended)",
+    "ostModeClassicDesc": "Classic Mode (tools placed in Steam folder, classic way)",
     "ostModeToClassic": "Switch to Classic",
     "ostModeToPure": "Switch to Pure",
-    "ostModeSwitching": "Switching (Restarting Steam)...",
+    "ostModeSwitching": "Switching mode and restarting Steam...",
     "pureModeTitle": "Switch to Pure Mode",
-    "pureModeDesc": "Zero files modified in official Steam directory via in-memory injection & IAT proxy. Fully isolated modules eliminate anti-cheat ban risks.",
+    "pureModeDesc": "Built for perfectionists: leaves Steam's directory untouched — 0 clutter, 0 writes. Highly recommended! Note: Steam must be launched from TC for this mode to work.",
     "classicModeTitle": "Switch to Classic Mode",
-    "classicModeDesc": "Places proxy DLLs (e.g. xinput1_4.dll) in Steam root. Designed for environments where antivirus blocks process injection. Not recommended unless needed.",
+    "classicModeDesc": "Installs DLL tools directly into Steam's root folder — the familiar classic way.",
     "ostModeLaunch": "Launch Steam",
     "ostModeLaunching": "Starting Steam...",
     "ostModeSwitchDoneTitle": "Mode Switched",
-    "ostModeSwitchDonePure": "Switched to Pure Mode. Starting Steam...",
-    "ostModeSwitchDoneClassic": "Switched to Classic Mode. Starting Steam...",
+    "ostModeSwitchDonePure": "Switched to Pure Mode, launching Steam...",
+    "ostModeSwitchDoneClassic": "Switched to Classic Mode, launching Steam...",
     "ostModeSwitchFailTitle": "Switch Failed",
     "ostModeLaunchDoneTitle": "Steam Launched",
-    "ostModeLaunchDoneDesc": "Steam started with engine injected.",
-    "ostModeLaunchClassicDesc": "Steam started in Classic Mode.",
+    "ostModeLaunchDoneDesc": "Steam launched with tools active",
+    "ostModeLaunchClassicDesc": "Steam launched in Classic Mode",
     "ostModeLaunchDegradedTitle": "Steam Launched",
-    "ostModeLaunchDegradedDesc": "Steam started normally without injection.",
+    "ostModeLaunchDegradedDesc": "Component not detected; launched normally. You can retry from TC.",
     "ostModeFailTitle": "Launch Failed",
     "ostModeUnknown": "Unknown launch error",
     "crMigrateDoneTitle": "Migration Done",
@@ -408,11 +430,17 @@
     "setHotkeyTitle": "Click to set shortcut",
     "diagRunning": "Scanning...",
     "diagBtn": "Diagnostics",
+    "exportLogsBtn": "Export Logs",
+    "exportLogsRunning": "Packaging...",
+    "exportLogsDoneTitle": "Logs Exported",
+    "exportLogsDoneDesc": "Diagnostic log bundle has been saved to your desktop.",
+    "exportLogsFailTitle": "Export Failed",
     "exp": {
       "title": "Experimental Features",
       "btn": "Experimental",
       "onlineLaunch": "Online Launch",
       "luaImport": "Import Manifests",
+      "gameFastLaunch": "Quick Game Launch",
       "toolsTitle": "Tools",
       "tools": {
         "dlc": "DLC Manager",
@@ -473,7 +501,7 @@
     "title": "Settings",
     "connection": {
       "invalidKey": "Invalid emergency node key, please check and retry",
-      "title": "Network Node",
+      "title": "Server Nodes",
       "node1": "Node 1 (Fast)",
       "node2": "Node 2 (Stable)",
       "node3": "Node 3 (Backup)",
@@ -487,15 +515,15 @@
       "noOnline": "Online Play Not Supported"
     },
     "identity": {
-      "title": "Account",
+      "title": "Account Login",
       "emailPlaceholder": "Email / Username",
       "passwordPlaceholder": "Password",
       "forgotPassword": "Forgot password?",
       "login": "Sign In",
-      "loggingIn": "Signing in...",
+      "loggingIn": "Logging in...",
       "inputRequired": "Please enter username and password",
-      "noAccount": "Don't have an account?\nRegister via secure channel.",
-      "register": "Register",
+      "noAccount": "Don't have an account?\nClick to register.",
+      "register": "Create Account",
       "normalUser": "Free User",
       "offlineReady": "Offline Ready",
       "offlineNotReady": "Offline Disabled",
@@ -526,18 +554,18 @@
       "st": "ST Engine",
       "ost": "OST Engine",
       "switchConfirmTitle": "Switch Engine?",
-      "switchDesc": "You are about to switch to the",
-      "switchDescEnd": "engine.",
-      "warningTitle": "WARNING",
-      "warningText": "Switching engine requires closing Steam. Ensure your game progress is saved.",
-      "confirmBtn": "Close Steam & Switch",
+      "switchDesc": "About to switch to ",
+      "switchDescEnd": " engine.",
+      "warningTitle": "Switch Engine",
+      "warningText": "Switching the engine will restart Steam. Please save your game progress before proceeding.",
+      "confirmBtn": "Restart Steam & Switch",
       "switchSuccessTitle": "Engine Switched",
-      "switchSuccessDesc": "Core files mounted. Restarting Steam.",
+      "switchSuccessDesc": "New engine is ready, restarting Steam.",
       "updateTitle": "Engine Update Available",
-      "updateDesc": "Core engine [{engine}] has released v{version}.",
-      "updateDetail": "Fixes connection issues with recent Steam updates. Recommended.",
-      "updateWarning": "Steam will be closed during update. Ensure saves are synced.",
-      "updateBtnCancel": "Skip",
+      "updateDesc": "Core engine <span class=\"text-[#00f3ff] font-bold\">[{engine}]</span> has released version <span class=\"text-accent font-bold\">v{version}</span>.",
+      "updateDetail": "The update resolves startup and networking issues with the latest Steam build. Recommended to update.",
+      "updateWarning": "Updating will restart Steam. Please make sure your game saves are saved.",
+      "updateBtnCancel": "Later",
       "updateBtnConfirm": "Update Now",
       "updatingText": "Updating engine...",
       "steamtoolsName": "SteamTools (ST)",
@@ -617,7 +645,17 @@
     "docs": {
       "btnTitle": "User Guide",
       "openBtn": "Open Guide"
-    }
+    },
+    "pureCardTitle": "Pure Mode · Zero Clutter",
+    "pureBadge": "Recommended",
+    "pureTag1": "Untouched Steam Folder",
+    "pureTag2": "0 Clutter, 0 Writes",
+    "pureTag3": "Must Launch from TC",
+    "classicCardTitle": "Classic Mode · Fallback",
+    "classicBadge": "Classic Way",
+    "classicTag1": "Installed in Steam Folder",
+    "classicTag2": "The Familiar Classic Way",
+    "classicTag3": "Works Opening Steam Directly"
   },
   "feedback": {
     "pageTitle": "Feedback & Support",
@@ -696,7 +734,16 @@
     "installed": "Installed",
     "notInstalled": "Not Installed",
     "installPath": "Location",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "notice": {
+      "copied": "Copied",
+      "copyCodePrefix": "Code: ",
+      "copyPwdPrefix": "Pass: ",
+      "copyCodeTitle": "Copy extract code: ",
+      "copyPwdTitle": "Copy extract password: ",
+      "directOpen": "Open",
+      "close": "Close"
+    }
   },
   "detail": {
     "closeEsc": "Close (ESC)",
@@ -780,6 +827,9 @@
     "mirrorDirect": "Direct",
     "terminalTitle": "Terminal",
     "terminalDone": "Complete",
+    "guideTitle": "Troubleshooting Guide",
+    "guideStep1": "Find this game in your Steam Library to install and launch directly.",
+    "guideStep2": "If it doesn't appear in Steam, restart it from TC. Valve network glitches are common.",
     "terminalFailed": "Interrupted",
     "terminalRunning": "Deploying protocol, please wait...",
     "btnFinish": "Done",
@@ -788,6 +838,10 @@
     "radarDenuvoDesc": "This game uses Denuvo. You may still need a genuine license after deployment.",
     "radarDependencyTitle": "Runtime Required",
     "radarDependencyDesc": "Extra game components may be needed before running.",
+    "radarYellowFreeTitle": "Startup Patch Required!",
+    "radarYellowFreeDesc": "This game requires a startup patch. Please visit the TC official community to download the patch and tool, then drag-and-drop to apply. You can also sponsor TC to unlock '1-Click Auto Install' directly in the Digital Warehouse via right-click.",
+    "radarYellowVipTitle": "Patch Version Locked",
+    "radarYellowVipDesc": "Dear TC Supporter, this game has been locked to the patch-compatible version. After downloading via Steam, open TC [Digital Warehouse] and right-click to [Install Patch].",
     "steamProtocolDesc": "Steam Protocol Connected\nAppID: {appId}",
     "terminalAuthRequired": "Please sign in before downloading",
     "terminalGatewayError": "Failed to get link: {msg}",
@@ -817,9 +871,11 @@
     "deployingNoClose": "Do not close while deploying",
     "doNotInterrupt": "Do not interrupt",
     "sharegame": {
+      "prereqTitle": "Prerequisite: Game must be fully downloaded first!",
+      "prereqDesc": "Official tickets expire in ~30 minutes once generated. Make sure this game is fully installed in your Steam library before claiming. If you claim early, it will expire while you download, and you cannot claim it again until tomorrow.",
       "authorizing": "Authorizing...",
       "authSuccessTitle": "【{name}】Authorized",
-      "authSuccessDesc": "Ticket written to registry. Restart Steam before launching the game",
+      "authSuccessDesc": "Ticket written to registry! Completely restart Steam to jump in.",
       "ready": "✓ Ticket ready",
       "noAccounts": "No local Steam accounts found",
       "error": {
@@ -829,7 +885,18 @@
         "429": "Too many requests. Please try again later",
         "500": "Gateway server error. Please retry later",
         "503": "Authorization service under maintenance"
-      }
+      },
+      "sponsorNoticeTitle": "Ticket Quota Notice",
+      "sponsorNoticeDesc": "I bought this game out of my own pocket to share official Steam tickets with you. Because Denuvo strictly caps activations at 5 per game each day, access is reserved exclusively for LV2 Lifetime Supporters so it doesn't get burnt out. Thanks for understanding and backing the project!",
+      "gotIt": "Got it",
+      "quotaTitle": "Daily Server Quota",
+      "quotaRemaining": "{remaining} / {limit} tickets left",
+      "quotaFull": "Sold out (0/5) · Next slot opens at {time}",
+      "accountLabel": "Authorize for this account:",
+      "restartSteamHint": "Make sure this account has signed into Steam on this PC before. Once the ticket is written, completely close and restart Steam to take effect.",
+      "authBtnReady": "⚡ Claim Official Ticket",
+      "authBtnFull": "Quota full for today (0/5)",
+      "authBtnWorking": "Grabbing ticket from Steam..."
     }
   },
   "vault": {
@@ -940,7 +1007,7 @@
     "ready": "READY"
   },
   "welcome": {
-    "firstLogin": "Sign in to activate full cloud features",
+    "firstLogin": "Please log in to your account first",
     "switchSettings": "Syncing 70,000+ Steam games daily",
     "browseDiscovery": "Browse Discovery & Search for games",
     "initNeuralLink": "Get Started"
@@ -965,7 +1032,42 @@
     "sourceAuto": "Auto",
     "sourceNone": "Not Found",
     "pathNotFound": "Steam folder not found. Please assign it manually.",
-    "driverCore": "Steam Path"
+    "driverCore": "Steam Path",
+    "launcher": {
+      "protectedTitle": "Main Account Protected",
+      "protectedDesc": "Account {acc} isn't whitelisted. Launched vanilla Steam safely.",
+      "nativeTitle": "Vanilla Steam Launched",
+      "nativeDesc": "Clean launch with no tools loaded. Safe for online multiplayer.",
+      "readyTitle": "Steam Ready",
+      "readyDesc": "Isolated pure mode is active.",
+      "successTitle": "Steam Launched Successfully",
+      "degradedTitle": "Steam Started (Tools Not Loaded)",
+      "degradedDesc": "Fell back to official vanilla Steam. Game helpers are disabled for this session.",
+      "detectDetail": "Details",
+      "degHandshake": "Injection handshake timed out (antivirus might have blocked it).",
+      "degNative": "Engine module missing (tc_native.node).",
+      "degDll": "Core tool file missing (OpenSteamTool.dll).",
+      "degUnknown": "Unknown reason",
+      "solTitle": "💡 Quick Troubleshooting Tips:",
+      "sol1": "Click 'Run Diagnostics' below to check permissions.",
+      "sol2": "Check if Windows Defender or antivirus quarantined tool files.",
+      "sol3": "If blocked repeatedly, try switching to Classic Mode in Settings.",
+      "iKnow": "Got it",
+      "runDiagnostics": "Run Diagnostics",
+      "retry": "Try Again",
+      "failTitle": "Failed to Launch Steam",
+      "reasonLabel": "Reason",
+      "solLabel": "💡 Suggested Fix",
+      "errNotFound": "Couldn't find steam.exe on your computer",
+      "solNotFound": "Go to Settings > Environment and select your Steam folder manually.",
+      "errStillRunning": "Steam is still running in the background and couldn't be closed",
+      "solStillRunning": "Open Task Manager, force close steam.exe, and try again.",
+      "errBusy": "Another launch or restart is already in progress",
+      "solBusy": "Please wait a moment and avoid clicking repeatedly.",
+      "errSystem": "System call failed",
+      "solSystem": "Click 'Run Diagnostics' to find out why, or restart your PC.",
+      "confirm": "OK"
+    }
   },
   "offlineMode": {
     "title": "Offline Mode",
@@ -1262,15 +1364,15 @@
     "patch": {
       "denuvo": {
         "title": "Denuvo Games",
-        "desc": "Only games with supported patches can be launched."
+        "desc": "All Denuvo patches are now built-in, supporting one-click automatic installation or manual drag-and-drop into helper tools."
       },
       "movieGame": {
-        "title": "Online Auth Games",
-        "desc": "Games with online DRM require dedicated patches to run."
+        "title": "Interactive FMV / Online Verification",
+        "desc": "Most interactive cinematic games contain online verification and require dedicated patches to launch. Direct deployment usually does not work; please follow community patch updates."
       },
       "onlineFix": {
-        "title": "Online Fix",
-        "desc": "Allows multiplayer with other patch users. Use an alt account."
+        "title": "Multiplayer Patches",
+        "desc": "Please visit the community to download the TC Multiplayer Patch Helper, synced with Online-Fix, supporting 3,000+ games."
       }
     },
     "multiplayer": {
@@ -1285,30 +1387,30 @@
     },
     "dlc": {
       "unlock": {
-        "title": "Unlocking DLC",
-        "desc": "For most games, deploying the base game automatically includes all available DLC."
+        "title": "Unlocking DLCs",
+        "desc": "When deploying a game, DLCs are already bundled. (Full DLC package is not guaranteed for all games)."
       },
       "missing": {
-        "title": "Missing DLC",
-        "desc": "Send us feedback via the sidebar to request missing DLC."
+        "title": "Standalone DLC Unlock",
+        "desc": "Settings -> Experimental -> DLC Manager can supplement standalone DLCs for your base games. (Some online-verified DLCs cannot be added)."
       },
       "safety": {
-        "title": "Account Safety",
-        "desc": "DLC unlock runs via local injection and does not risk your Steam main account."
+        "title": "DLC Updates",
+        "desc": "If newly released DLCs cannot be found, please send us a message in the sidebar; we will update them promptly!"
       }
     },
     "builtin": {
       "download": {
-        "title": "Downloading Games",
-        "desc": "Pre-configured single-player games can be downloaded at full speed via the built-in downloader."
+        "title": "ASF Card Idler",
+        "desc": "If you know, you know: idle cards for games on your main account, sell them on the Steam Market, and use the wallet balance to buy more games."
       },
       "engine": {
-        "title": "Aria2 Downloader",
-        "desc": "Multi-threaded high-speed HTTP downloader. Paste direct links to start."
+        "title": "Using Download Engine",
+        "desc": "Built-in aria2c core with 16-thread concurrency. Only supports HTTP links. Click + and paste the download link. Optimized for Nexus Mods direct links. Please configure download folder before use."
       },
       "minigame": {
-        "title": "Minigames",
-        "desc": "Play original minigames to earn points and redeem daily download quota."
+        "title": "What Are Mini-Games For?",
+        "desc": "Earn download quotas by playing original TC mini-games. As the creator masters more skills, the games will keep getting more fun!"
       }
     },
     "faq": {
@@ -1340,13 +1442,9 @@
         "q": "Game will not launch",
         "a": "Games with 3rd-party launchers (EA, Ubisoft) or unpatched Denuvo require separate patches."
       },
-      "launch54": {
-        "q": "Error 54 on game launch",
-        "a": "Switch to OST engine in Settings, or use Steamless."
-      },
       "updateFail": {
-        "q": "Game version outdated",
-        "a": "Redeploy the game in TitanCore to pull the newest manifest."
+        "q": "Game Cannot Update / Version Outdated",
+        "a": "Right-click the game in Digital Library and choose Update."
       }
     }
   },
@@ -1523,5 +1621,72 @@
     "gamesUnit": "Games",
     "managePrivileges": "Terminal Access Details",
     "connectNetwork": "Connect to Titan Network"
+  },
+  "shareModal": {
+    "badge": "Shared Legit Perk",
+    "subtitle": "Self-funded genuine Steam tickets for core supporters",
+    "lotteryBadge": "Pool Roulette",
+    "lotterySubtitle": "Commander Exclusive Roulette · 10 Quota / Spin · Try Your Luck",
+    "lotteryCostLabel": "Cost:",
+    "lotteryCostUnit": "10 Quota",
+    "lotteryMyBalanceLabel": "My Quota:",
+    "lotteryBalanceUnit": "pts",
+    "lotteryRoundLabel": "Spins Used:",
+    "lotteryRoundUnit": "/ {max}",
+    "lotteryStatus": "Pool Spin",
+    "lotteryStatusCd": "12h Cooldown",
+    "lotteryNoticeTitle": "Shared Pool Heads-Up",
+    "lotteryNoticeTag": "{max} Accts · 12h CD",
+    "lotteryNoticeDesc": "Shared accounts aren't 100% guaranteed. Spend 10 quota to try your luck—if it's full today, come back tomorrow!",
+    "lotteryNoticeInstallWarn": "⚠️ Install the game on Steam BEFORE spinning! Tickets expire in 30 mins—click below to restart Steam and launch the game once right after claiming.",
+    "btnLotteryReady": "🎰 Spend {cost} Quota to Spin ({cur}/{max})",
+    "btnLotteryNoQuota": "Not enough quota (10 pts needed)",
+    "btnLotteryWorking": "Spinning for a ticket...",
+    "close": "Close",
+    "appId": "Steam AppID:",
+    "defaultTitle": "Steam Shared Game",
+    "defaultDesc": "Self-funded genuine Steam tickets as an exclusive perk for TitanCore supporters.",
+    "tagShared": "Shared Game",
+    "tagLegit": "Legit Ticket",
+    "quotaRemainingLabel": "Slots Left:",
+    "quotaSlots": "/ 5",
+    "userDailyLabel": "Daily Left:",
+    "userDailyLimit": "/ 2",
+    "statusAvailable": "Slots Open",
+    "statusCooling": "Cooling Down",
+    "noticeTitle": "Install the game on Steam BEFORE claiming!",
+    "noticeDesc": "Tickets expire in 30 mins. Fully install the game on Steam first! Limit 1 claim per game daily—if it expires while downloading, it can't be reissued today.",
+    "targetAccountLabel": "Target Steam Account",
+    "refreshAccount": "Refresh",
+    "refreshAccountTitle": "Refresh after switching accounts in Steam",
+    "activeBadge": "Active",
+    "detectingAccount": "Checking active Steam account...",
+    "noAccountDetected": "No active Steam account found. Please open Steam first.",
+    "accountSwitchHint": "💡 Wrong account? Switch inside Steam first, then hit Refresh.",
+    "successTitle": "Ticket Imported!",
+    "expireRemaining": "Expires in:",
+    "timeFormat": "{m}m {s}s",
+    "successDesc": "Ticket expires in 30 mins! First click below to restart Steam, then launch the game in Steam once to activate.",
+    "restartSteamBtn": "Restart Steam (Apply Ticket)",
+    "launchBtnWorking": "Restarting Steam...",
+    "launchBtn": "Launch Game (Go start in Steam!)",
+    "btnWorking": "Claiming ticket...",
+    "btnClaimed": "Already claimed today (1/day per game)",
+    "btnLimitReached": "Daily limit reached (max 2 games/day)",
+    "btnQuotaFull": "All slots full right now (cooling down)",
+    "btnNoAccount": "No active Steam account found",
+    "btnReady": "Claim Genuine Ticket",
+    "sponsorModalTitle": "Commander Exclusive Perk",
+    "sponsorModalP1": "This shared library is funded out-of-pocket by the developer to share genuine Steam access with our core supporters.",
+    "sponsorModalP2": "Due to Denuvo's 5-ticket daily cap and budget limits, this perk is exclusive to permanent Commander supporters. Thanks for understanding!",
+    "gotIt": "Got It",
+    "toastLoginFirst": "Please log in to Titan first",
+    "toastRestartingSteam": "Restarting Steam to apply ticket...",
+    "toastLaunchSuccess": "Game launched!",
+    "toastAuthSuccess": "Ticket imported!",
+    "toastAuthFailedDefault": "Failed to get ticket. Please try again later.",
+    "toastNetworkTimeout": "Connection timed out. Please try again.",
+    "btnLotteryCd": "All {max} Spins Used (12h Cooldown)",
+    "lotteryTurnCount": "Spins {c}/{max} (12h)"
   }
 }

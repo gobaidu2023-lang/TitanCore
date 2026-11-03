@@ -437,25 +437,6 @@ export function registerEngineService() {
 
   ipcMain.removeHandler('ost:scan-anticheat-games')
   
-  ipcMain.removeHandler('ost:get-family-library-mode')
-  ipcMain.handle('ost:get-family-library-mode', async () => {
-    try {
-      return await ModeSwitchService.getFamilyLibraryMode()
-    } catch (e: any) {
-      console.error('[EngineService] ost:get-family-library-mode 异常:', e)
-      return false
-    }
-  })
-
-  ipcMain.removeHandler('ost:set-family-library-mode')
-  ipcMain.handle('ost:set-family-library-mode', async (_e, enabled: boolean) => {
-    try {
-      return await ModeSwitchService.setFamilyLibraryMode(enabled)
-    } catch (e: any) {
-      console.error('[EngineService] ost:set-family-library-mode 异常:', e)
-      return false
-    }
-  })
 
   ipcMain.handle('ost:scan-anticheat-games', async () => {
     try {

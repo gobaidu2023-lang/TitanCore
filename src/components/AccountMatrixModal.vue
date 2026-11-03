@@ -59,39 +59,6 @@
         </button>
       </div>
 
-      
-      <!-- 账号归属模式面板 (Steam 家庭库归属 / 专属游戏) -->
-      <div class="flex items-center justify-between bg-black/40 border border-white/10 p-5 rounded-xl hover:border-white/20 transition-all">
-        <div class="flex flex-col gap-1.5 pr-4">
-          <span class="text-base md:text-lg font-bold text-white tracking-wider flex items-center gap-2.5">
-            账号归属模式
-            <span 
-              class="text-xs px-2 py-0.5 rounded font-mono font-bold"
-              :class="familyLibraryMode ? 'bg-[#00f3ff]/20 text-[#00f3ff] border border-[#00f3ff]/40' : 'bg-white/10 text-gray-400 border border-white/15'"
-            >
-              {{ familyLibraryMode ? '来自 Steam 家庭库' : '专属游戏' }}
-            </span>
-          </span>
-          <span class="text-xs md:text-sm text-gray-400 font-code leading-relaxed">
-            {{ familyLibraryMode ? '显示为“来自您的 Steam 家庭库”（归属伪装/分类收拢，避险与分类推荐）' : '消除家庭库标签，与真买游戏完全一致（显示为本人的专属游戏）' }}
-          </span>
-        </div>
-
-        <button 
-          type="button"
-          @click="toggleFamilyLibraryMode"
-          :disabled="isTogglingFamilyMode"
-          class="w-14 h-7 rounded-full transition-colors relative shrink-0 p-0.5 cursor-pointer"
-          :class="familyLibraryMode ? 'bg-[#00f3ff]' : 'bg-gray-700'"
-          :title="familyLibraryMode ? '已开启家庭库归属' : '已关闭家庭库归属，作为专属游戏'"
-        >
-          <div 
-            class="w-6 h-6 rounded-full bg-white transition-all shadow-md"
-            :class="familyLibraryMode ? 'translate-x-7' : 'translate-x-0'" 
-          />
-        </button>
-      </div>
-
       <!-- 账号列表区域 -->
       <div class="flex flex-col gap-3">
         <div class="flex items-center justify-between px-1">
@@ -99,57 +66,32 @@
             <span>{{ t('gate.matrixTitle') }}</span>
             <span class="text-[#00f3ff] font-bold">({{ accounts.length }})</span>
           </span>
-          <button 
-            type="button" 
-            @click="fetchAccounts"
-            :disabled="isLoading" 
-            class="text-xs md:text-sm font-code text-[#00f3ff] hover:underline flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-          >
-            <span v-if="isLoading" class="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-            {{ t('gate.refresh') }}
-          </button>
         </div>
-
-        <!-- 表格主体 -->
-        <div class="border border-white/10 rounded-xl bg-black/30 divide-y divide-white/5 overflow-hidden">
-          <div v-if="isLoading" class="py-16 text-center text-sm font-code text-gray-400">
-            <div class="w-8 h-8 border-2 border-[#00f3ff] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-            {{ t('gate.loading') }}
-          </div>
-
-          <div v-else-if="accounts.length === 0" class="py-14 px-4 text-center text-sm font-code text-gray-500">
-            {{ t('gate.emptyHint') }}
-          </div>
-
+        <div class="space-y-2 max-h-80 overflow-y-auto pr-1 scrollbar-hide">
           <div 
-            v-else 
             v-for="acc in accounts" 
             :key="acc.steamId64"
             @click="toggleAccountSelection(acc.steamId64)"
-            class="p-4 md:p-5 flex items-center justify-between hover:bg-white/[0.04] transition-all cursor-pointer select-none group"
-            :class="{ 'opacity-40 cursor-not-allowed': !isGateEnabled }"
+            class="flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer"
+            :class="[
+              selectedIds.includes(acc.steamId64) && isGateEnabled
+                ? 'bg-[#00f3ff]/10 border-[#00f3ff]/50 shadow-[0_0_15px_rgba(0,243,255,0.15)]'
+                : 'bg-black/30 border-white/5 hover:border-white/20'
+            ]"
           >
-            <div class="flex items-center gap-4">
-              <!-- 头像首字母 -->
-              <div class="w-12 h-12 rounded-xl bg-[#141414] border border-white/10 flex items-center justify-center font-bold text-lg text-[#00f3ff] shrink-0 font-code shadow-inner group-hover:border-[#00f3ff]/50 transition-colors">
-                {{ acc.personaName?.charAt(0).toUpperCase() || 'U' }}
+            <!-- 账号信息 -->
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-bold text-gray-300 font-code text-sm">
+                {{ (acc.personaName || acc.accountName || '?').substring(0, 2).toUpperCase() }}
               </div>
-
-              <!-- 账号信息 -->
-              <div class="flex flex-col gap-1">
-                <div class="flex items-center gap-3">
-                  <span class="text-base md:text-lg font-bold text-white tracking-wide group-hover:text-[#00f3ff] transition-colors">
-                    {{ acc.personaName }}
+              <div class="flex flex-col">
+                <span class="text-sm font-bold text-white flex items-center gap-2">
+                  {{ acc.personaName || acc.accountName || acc.steamId64 }}
+                  <span v-if="acc.mostRecent" class="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30">
+                    {{ t('gate.current') }}
                   </span>
-                  <span v-if="acc.mostRecent" class="text-xs font-bold font-code bg-green-500/20 text-green-400 border border-green-500/40 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(34,197,94,0.3)]">
-                    {{ t('gate.activeBadge') }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-3 text-xs md:text-sm font-code text-gray-400">
-                  <span>ID64: <strong class="text-gray-300">{{ acc.steamId64 }}</strong></span>
-                  <span class="text-white/20">|</span>
-                  <span>ACC: {{ acc.accountId }}</span>
-                </div>
+                </span>
+                <span class="text-xs text-gray-500 font-code">SteamID64: {{ acc.steamId64 }}</span>
               </div>
             </div>
 
@@ -254,32 +196,6 @@ const accounts = ref<AccountItem[]>([])
 const selectedIds = ref<string[]>([])
 const isGateEnabled = ref(false)
 
-const familyLibraryMode = ref(false)
-const isTogglingFamilyMode = ref(false)
-
-const loadFamilyLibraryMode = async () => {
-  try {
-    const res = await window.electron.ost.getFamilyLibraryMode()
-    familyLibraryMode.value = !!res
-  } catch (e) {
-    console.warn('[AccountMatrix] 获取家庭库模式失败:', e)
-  }
-}
-
-const toggleFamilyLibraryMode = async () => {
-  if (isTogglingFamilyMode.value) return
-  isTogglingFamilyMode.value = true
-  try {
-    const target = !familyLibraryMode.value
-    const ok = await window.electron.ost.setFamilyLibraryMode(target)
-    if (ok) {
-      familyLibraryMode.value = target
-    }
-  } finally {
-    isTogglingFamilyMode.value = false
-  }
-}
-
 const isLoading = ref(false)
 const isSaving = ref(false)
 const saveError = ref('')
@@ -353,7 +269,6 @@ watch(() => props.visible, (val) => {
   if (val) {
     saveError.value = ''
     fetchAccounts()
-    loadFamilyLibraryMode()
   }
 })
 </script>

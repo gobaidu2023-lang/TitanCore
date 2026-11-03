@@ -7,6 +7,8 @@ import path from 'node:path'
 import { SteamDetector } from './SteamDetector'
 import { ModeSwitchService } from './ModeSwitchService'
 import { CloudSaveService } from './CloudSaveService'
+import { PatternSyncService } from './PatternSyncService'
+import { Logger } from '../utils/logger'
 
 export interface LaunchSteamResult {
   success: boolean
@@ -67,6 +69,7 @@ export class SteamLaunchService {
       }
       return await this.launchSteam()
     } catch (e: any) {
+      Logger.error('SteamLaunchService', '一键启动 Steam 发生致命异常:', e?.message || e)
       return { success: false, handshake: false, error: e?.message || 'UNKNOWN' }
     }
   }
@@ -74,10 +77,13 @@ export class SteamLaunchService {
   // 启动账号预测：优先注册表 AutoLoginUser，其次 VDF 活跃/最近标记，再次时间戳排序
   public static predictActiveSteamAccount(steamPath: string): { steamId64: string; accountName: string; personaName: string; source: string } | null {
     try {
-      // 1. 优先读取注册表 AutoLoginUser
+      // 1. 优先读取注册表 AutoLoginUser（安全绝对寻址，防止 PATH 丢失）
       let regUser: string | null = null
       try {
-        const out = execFileSync('reg.exe', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'AutoLoginUser'], { encoding: 'utf-8', timeout: 2000 })
+        const sysRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows'
+        const regTarget = path.join(sysRoot, 'System32', 'reg.exe')
+        const regExe = fsSync.existsSync(regTarget) ? regTarget : 'reg.exe'
+        const out = execFileSync(regExe, ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'AutoLoginUser'], { encoding: 'utf-8', timeout: 2000 })
         const m = out.match(/AutoLoginUser\s+REG_SZ\s+(.+)/i)
         if (m && m[1]) regUser = m[1].trim()
       } catch {}
@@ -150,6 +156,7 @@ export class SteamLaunchService {
       const steamPath = det.path
       const steamExe = steamPath ? path.join(steamPath, 'steam.exe') : ''
       if (!steamPath || !fs.existsSync(steamExe)) {
+        Logger.error('SteamLaunchService', '启动失败: 未找到 steam.exe', { steamPath })
         return { success: false, handshake: false, error: 'STEAM_NOT_FOUND' }
       }
 
@@ -170,6 +177,13 @@ export class SteamLaunchService {
         }
       } catch (migErr) {
         console.warn('[SteamLaunchService] 启动前存量云存档静默迁移跳过:', migErr)
+      }
+
+      // 前置主动拉取 Pattern / IPC 特征码：尽力而为（Best-effort），绝不阻断启动
+      try {
+        await PatternSyncService.validatePatterns()
+      } catch (patternErr: any) {
+        console.warn('[SteamLaunchService] 前置特征码同步捕获:', patternErr?.message)
       }
 
       // 账号闸前置决策：非白名单账号不注入，主号保护启动（根本不进内存）
@@ -200,8 +214,11 @@ export class SteamLaunchService {
         }
       }
 
-      // 经典模式: 代理入口自会挂载, 普通启动即可
+      // 经典模式: 启动前将本地最新工具包覆盖同步至 Steam 根并清理早期遗产，代理入口自会挂载
       if (mode === 'classic') {
+        await ModeSwitchService.syncClassicArtifacts(steamPath).catch((err) => {
+          console.warn('[SteamLaunchService] 经典模式同步最新工具包异常:', err?.message)
+        })
         this.plainLaunch(steamExe)
         return { success: true, handshake: false }
       }
@@ -214,7 +231,7 @@ export class SteamLaunchService {
         return { success: true, handshake: false, degraded: true, error: !native ? 'NATIVE_MISSING' : 'DLL_MISSING' }
       }
 
-      const timeouts = [5000, 10000]
+      const timeouts = [15000, 25000]
       for (let attempt = 0; attempt < timeouts.length; attempt++) {
         const eventName = `OST_RDV_${process.pid}_${Date.now()}_${attempt}`
         let result: NativeLaunchResult
@@ -232,6 +249,7 @@ export class SteamLaunchService {
       }
 
       // 两次未握手: 回滚分流标记 -> 杀净注入失败的残留 Steam -> 普通启动兜底(避免双开互踩)
+      Logger.warn('SteamLaunchService', '注入两次未握手，自动降级为原版启动', { tomlPath, steamExe })
       ModeSwitchService.setTomlKey(tomlPath, 'diversion', 'enabled', 'false')
       await ModeSwitchService.ensureSteamDead()
       this.plainLaunch(steamExe)

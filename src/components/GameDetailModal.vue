@@ -39,7 +39,7 @@
               :src="coverUrl"
               class="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105"
               :class="currentTheme === 'anime' ? 'opacity-90' : 'opacity-85'"
-              alt="cover"
+              :alt="props.title || ''"
             />
             <div 
               class="absolute inset-0 transition-colors duration-300"
@@ -150,13 +150,15 @@
                   <div class="text-sm leading-relaxed" :class="currentTheme === 'anime' ? 'text-rose-700' : 'text-rose-300/80'">{{ t('detail.radarDenuvoDesc') }}</div>
                 </div>
 
-                <!-- 雷达排障警示 - 黄 -->
+                <!-- 雷达排障警示 - 黄 (100%保留原版经典黄框体系，字号加大，纯净桌面端无冗余按钮) -->
                 <div v-else-if="radarStatus === 'yellow'" class="mb-6 p-5 rounded-lg" :class="currentTheme === 'anime' ? 'bg-amber-50 border border-amber-200' : 'bg-amber-500/10 border border-amber-500/25'">
-                  <div class="text-amber-500 text-base font-bold flex items-center gap-2.5 mb-1.5">
-                    <span class="w-3 h-3 rounded bg-amber-500 border border-black shadow-[0_0_6px_#eab308]"></span>
-                    {{ t('detail.radarDependencyTitle') }}
+                  <div class="text-lg font-bold flex items-center gap-2.5 mb-2" :class="currentTheme === 'anime' ? 'text-amber-800' : 'text-amber-500'">
+                    <span class="w-3.5 h-3.5 rounded bg-amber-500 border border-black shadow-[0_0_6px_#eab308] shrink-0"></span>
+                    <span>{{ isVipUser ? t('detail.radarYellowVipTitle') : t('detail.radarYellowFreeTitle') }}</span>
                   </div>
-                  <div class="text-sm leading-relaxed" :class="currentTheme === 'anime' ? 'text-amber-700' : 'text-amber-300/80'">{{ t('detail.radarDependencyDesc') }}</div>
+                  <div class="text-base leading-relaxed" :class="currentTheme === 'anime' ? 'text-amber-900/90' : 'text-amber-300/90'">
+                    {{ isVipUser ? t('detail.radarYellowVipDesc') : t('detail.radarYellowFreeDesc') }}
+                  </div>
                 </div>
 
                 <!-- 描述正文 (绝对高对比度：二次元下使用 #4a425a，彻底根除物理不可见缺陷) -->
@@ -297,22 +299,41 @@
                     </div>
 
                     <!-- 新手指南步骤 -->
-                    <div class="rounded-lg p-4 border space-y-2.5" :class="currentTheme === 'anime' ? 'bg-white border-emerald-100 shadow-sm' : 'bg-black/40 border-white/[0.04]'">
-                      <div class="text-sm font-semibold flex items-center gap-2" :class="currentTheme === 'anime' ? 'text-[#1e192b]' : 'text-white/90'">
+                    <div 
+                      class="rounded-lg p-4 border space-y-2.5 transition-all" 
+                      :class="currentTheme === 'anime' 
+                        ? 'bg-white border-emerald-100 shadow-sm' 
+                        : (currentTheme === 'minimal' 
+                          ? 'bg-[#0e1626]/70 border-[#00f2ff]/20 shadow-[0_0_20px_rgba(0,242,255,0.06)]' 
+                          : 'bg-black/40 border-white/[0.04]')"
+                    >
+                      <div 
+                        class="text-sm font-semibold flex items-center gap-2" 
+                        :class="currentTheme === 'anime' 
+                          ? 'text-[#1e192b]' 
+                          : (currentTheme === 'minimal' ? 'text-[#00f2ff]' : 'text-white/90')"
+                      >
                         <span>💡</span>
-                        <span>{{ copyGuide?.title || '快速运行指引' }}</span>
+                        <span>{{ displayGuideTitle }}</span>
                       </div>
-                      <ol class="text-xs space-y-2 pl-5 list-decimal leading-relaxed" :class="currentTheme === 'anime' ? 'text-[#4a425a]' : 'text-[#94a3b8]'">
+                      <ol 
+                        class="text-xs space-y-2 pl-5 list-decimal leading-relaxed" 
+                        :class="currentTheme === 'anime' 
+                          ? 'text-[#4a425a]' 
+                          : (currentTheme === 'minimal' ? 'text-zinc-300' : 'text-[#94a3b8]')"
+                      >
                         <li v-for="(step, idx) in displayGuideSteps" :key="idx">{{ step }}</li>
                       </ol>
                     </div>
 
                     <button
                       @click="close"
-                      class="w-full py-3 font-bold text-sm rounded-lg transition-all"
+                      class="w-full py-3 font-bold text-sm rounded-lg transition-all cursor-pointer"
                       :class="currentTheme === 'anime' 
                         ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-white shadow-md hover:brightness-105' 
-                        : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_16px_rgba(16,185,129,0.25)]'"
+                        : (currentTheme === 'minimal'
+                          ? 'bg-gradient-to-r from-[#00f2ff] to-[#00c8ff] hover:brightness-110 text-black font-black shadow-[0_0_16px_rgba(0,242,255,0.25)]'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_16px_rgba(16,185,129,0.25)]')"
                     >
                       {{ t('detail.finishClose') }}
                     </button>
@@ -384,7 +405,7 @@
                     </div>
 
                     <!-- 载入节点 Spinner -->
-                    <div v-else-if="isFetching" class="py-10 flex flex-col items-center justify-center" :class="currentTheme === 'anime' ? 'text-slate-500' : 'text-zinc-500'">
+                    <div v-if="isFetching" class="py-10 flex flex-col items-center justify-center" :class="currentTheme === 'anime' ? 'text-slate-500' : 'text-zinc-500'">
                       <div class="w-8 h-8 border-2 rounded-full animate-spin mb-4" :class="currentTheme === 'anime' ? 'border-pink-200 border-t-[#ff85b3]' : 'border-zinc-700 border-t-[#00f3ff]'"></div>
                       <span class="text-sm font-mono">{{ t('detail.fetchingLinks') }}</span>
                     </div>
@@ -453,6 +474,8 @@ import { useTheme } from '../composables/useTheme'
 
 const { currentTheme } = useTheme()
 
+const isVipUser = computed(() => !!authStore.isVip && (authStore.user?.vipLevel ?? 0) > 0)
+
 const props = defineProps<{
   visible: boolean
   gameId: string
@@ -501,7 +524,21 @@ const libraryStore = useLibraryStore()
 const transmissionStore = useTransmissionStore()
 
 const safeGameId = computed(() => props.gameId || '')
-const effectiveAppId = computed(() => props.appId || safeGameId.value.replace(/^steam_gate_/, ''))
+const effectiveAppId = computed(() => {
+  const candidates = [
+    props.appId,
+    safeGameId.value
+  ]
+  for (const c of candidates) {
+    if (!c) continue
+    const clean = String(c).replace(/^(steam_gate_|titan_protocol_|game_|patch_)/, '').trim()
+    const m = clean.match(/(\d{3,10})/)
+    if (m) return m[1]
+  }
+  const cleanFallback = String(props.appId || safeGameId.value).replace(/^(steam_gate_|titan_protocol_)/, '').trim()
+  const mFallback = cleanFallback.match(/(\d+)/)
+  return mFallback ? mFallback[1] : cleanFallback
+})
 const isProtocol = computed(() => props.type === 'titan_protocol')
 const radarStatus = computed(() => searchStore.checkRadarStatus(effectiveAppId.value))
 
@@ -607,17 +644,20 @@ const rawLogsHistory = ref<Array<{ ts: string; msg: string; type: string }>>([])
 const needRestartSteam = ref(false)
 
 const copyGuide = ref<{ title: string; intro: string; steps: string[] } | null>(null)
-const FALLBACK_GUIDE_STEPS = [
-  '请在 Steam 客户端左侧游戏库中找到本作。',
-  '点击绿色「开始游戏」按钮即可直接运行。',
-  '若遇到启动无响应，重启一次 Steam 客户端即可自愈。'
-]
-const displayGuideSteps = computed(() =>
-  (Array.isArray(copyGuide.value?.steps) && copyGuide.value!.steps.length > 0) ? copyGuide.value!.steps : FALLBACK_GUIDE_STEPS
-)
+const displayGuideTitle = computed(() => t('detail.guideTitle'))
+const displayGuideSteps = computed(() => {
+  if (Array.isArray(copyGuide.value?.steps) && copyGuide.value!.steps.length > 0) {
+    const hasStale = copyGuide.value!.steps.some(s => s.includes('数字仓库'))
+    if (!hasStale) return copyGuide.value!.steps
+  }
+  return [
+    t('detail.guideStep1'),
+    t('detail.guideStep2')
+  ]
+})
 
 const quotaError = ref('')
-const quotaCost = computed(() => (isProtocol.value ? 1 : 3))
+const quotaCost = computed(() => (isProtocol.value ? 1 : 5))
 
 const safeRemaining = computed(() => Math.max(0, authStore.dailyQuota?.remaining ?? 0))
 const safeLimit = computed(() => authStore.dailyQuota?.limit ?? 0)
@@ -798,7 +838,7 @@ async function handleDeploy() {
         lastErrorLog.value = t('detail.logRestocking')
       } else if (errUpper.includes('EBUSY') || errUpper.includes('BUSY') || errUpper.includes('LOCKED')) {
         lastErrorLog.value = t('detail.logFileLocked')
-      } else if (errUpper.includes('QUOTA') || errUpper.includes('429')) {
+      } else if (errUpper.includes('QUOTA') || errUpper.includes('429') || err.includes('额度不足')) {
         lastErrorLog.value = t('detail.logQuotaGone')
         const remaining = safeRemaining.value + safeExtraRemaining.value
         quotaError.value = t('detail.quotaShort', { cost: quotaCost.value, remaining })
@@ -880,7 +920,14 @@ async function fetchLinks() {
         })
       }
     } else {
-      showToast(result?.msg ? t(result?.msg) : t('detail.fetchLinkFailed'), 'error')
+      const errMsg = String(result?.msg || '')
+      if (errMsg.includes('额度不足') || errMsg.toUpperCase().includes('QUOTA') || errMsg.includes('429')) {
+        const remaining = safeRemaining.value + safeExtraRemaining.value
+        quotaError.value = t('detail.quotaShort', { cost: quotaCost.value, remaining })
+        showToast(quotaError.value, 'error')
+      } else {
+        showToast(result?.msg ? (t(result.msg) !== result.msg ? t(result.msg) : result.msg) : t('detail.fetchLinkFailed'), 'error')
+      }
     }
   } catch (error: any) {
     showToast(error.message || t('app.unknownError'), 'error')
@@ -930,6 +977,7 @@ async function triggerDownload(mirror: any) {
 }
 
 onMounted(() => {
+  searchStore.initRadar()
   loadVotesFromServer()
   window.electron.invoke('sys:get-config', 'copy_guide').then((g: any) => {
     if (g && typeof g === 'object' && g.title) copyGuide.value = g
@@ -960,6 +1008,7 @@ onMounted(() => {
 watch(isOpen, (val) => {
   resetDeploymentState()
   if (val) {
+    searchStore.initRadar()
     loadVotesFromServer()
   }
 })

@@ -69,8 +69,6 @@ interface Window {
       launchSteam: () => Promise<{ success: boolean; handshake: boolean; degraded?: boolean; protected?: boolean; account?: string; accountName?: string; error?: string }>
       launchSteamNative: () => Promise<{ success: boolean; native: boolean; error?: string }>
       scanAntiCheatGames: () => Promise<string[]>
-      getFamilyLibraryMode: () => Promise<boolean>
-      setFamilyLibraryMode: (enabled: boolean) => Promise<boolean>
     }
     invoke: (channel: string, ...args: any[]) => Promise<any>
     on: (channel: string, func: (...args: any[]) => void) => () => void

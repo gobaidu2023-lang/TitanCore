@@ -1,305 +1,34 @@
 <!-- 文件名: src/components/LibraryView.vue -->
 <template>
   <div 
-    class="h-full flex flex-col relative overflow-hidden select-none animate-fade-in transition-colors duration-300" 
+  <div 
+    class="h-full flex flex-col relative overflow-hidden select-none animate-fade-in transition-colors duration-300 px-8 pt-5" 
     :class="[
       currentTheme === 'anime' ? 'bg-transparent text-[#2b2238]' : '',
       currentTheme === 'minimal' ? 'bg-transparent text-slate-200' : '',
-      currentTheme !== 'anime' && currentTheme !== 'minimal' ? 'bg-[#0d0e12] text-white px-8 pt-5' : ''
+      currentTheme !== 'anime' && currentTheme !== 'minimal' ? 'bg-[#0d0e12] text-white' : ''
     ]"
     style="font-family: 'MiSans', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif;"
   >
-        <!-- Minimal 极简深空星渊独立模式：100% 复用与 DiscoveryView 统一的次时代资产流矩阵 -->
-        <!-- Sakura 二次元独立主题模式：100% 复用与 DiscoveryView 统一的大大圆角资产流矩阵 -->
-    <AnimeGameGrid
-      v-if="currentTheme === 'anime'"
-      :tabs="libraryTabs"
-      :active-tab="activeFilter"
-      :items="filteredList"
-      :is-fetching="false"
-      :manage-mode="manageMode"
-      :selected-ids="selectedIds"
-      :empty-text="t('library.noAssets')"
-      :is-library-view="true"
-      :hide-controls="true"
-      :local-steam-first="true"
-      @select-tab="(tabId) => activeFilter = tabId"
-      @card-action="handleCardClick"
-      @card-contextmenu="handleCardContextMenu"
-      @toggle-select="toggleSelectCard"
-    >
-      <!-- 管理模式操作条 -->
-      <template v-if="manageMode" #manage-bar>
-        <div class="flex items-center gap-3 w-full animate-fade-in text-xs py-0.5">
-          <span class="font-bold text-[#c24b78] whitespace-nowrap">{{ t('library.selectedCount', { count: selectedIds.size }) }}</span>
-          <button 
-            type="button"
-            @click="toggleSelectAllCards" 
-            class="px-4 py-2 rounded-full bg-white border border-[#f5cbdc] text-[#473957] hover:bg-pink-50 hover:text-[#d45989] shadow-sm transition-all cursor-pointer"
-          >
-            {{ t('library.selectAll') }}
-          </button>
-          <select 
-            v-model="sortMode" 
-            class="px-3 py-2 rounded-full bg-white border border-[#f5cbdc] text-[#473957] focus:outline-none shadow-sm cursor-pointer"
-          >
-            <option value="newest">{{ t('library.sortNewest') }}</option>
-            <option value="oldest">{{ t('library.sortOldest') }}</option>
-            <option value="name">{{ t('library.sortName') }}</option>
-          </select>
-          <button 
-            type="button"
-            @click="batchRedeploy" 
-            :disabled="selectedIds.size === 0" 
-            class="px-4 py-2 rounded-full bg-white border border-[#f5cbdc] text-[#473957] hover:bg-pink-50 hover:text-[#d45989] disabled:opacity-30 shadow-sm transition-all cursor-pointer"
-          >
-            {{ t('library.batchRedeploy') }}
-          </button>
-          <button 
-            type="button"
-            @click="batchToggleAutoUpdate" 
-            :disabled="selectedIds.size === 0" 
-            class="px-4 py-2 rounded-full bg-white border border-[#f5cbdc] text-[#473957] hover:bg-pink-50 hover:text-[#d45989] disabled:opacity-30 shadow-sm transition-all cursor-pointer"
-          >
-            {{ allSelectedAutoUpdateOn ? t('library.contextMenu.disableUpdate') : t('library.contextMenu.enableUpdate') }}
-          </button>
-          <button 
-            type="button"
-            @click="batchUninstall" 
-            :disabled="selectedIds.size === 0" 
-            class="px-4 py-2 rounded-full bg-white border border-[#f5cbdc] text-[#473957] hover:bg-pink-50 hover:text-[#d45989] disabled:opacity-30 shadow-sm transition-all cursor-pointer"
-          >
-            {{ t('library.batchUninstall') }}
-          </button>
-          <button 
-            type="button"
-            @click="batchRemoveRecords" 
-            :disabled="selectedIds.size === 0" 
-            class="px-4 py-2 rounded-full bg-red-50 hover:bg-red-100 text-red-500 border border-red-200 disabled:opacity-30 shadow-sm transition-all cursor-pointer"
-          >
-            {{ t('library.contextMenu.deleteRecord') }}
-          </button>
-          <button 
-            type="button"
-            @click="showBatchDeployModal" 
-            class="px-4 py-2 rounded-full bg-white border border-[#f5cbdc] text-[#473957] hover:bg-pink-50 hover:text-[#d45989] shadow-sm transition-all cursor-pointer whitespace-nowrap"
-          >
-            {{ t('library.batchDeploy') }}
-          </button>
-          <div class="flex-1"></div>
-          <button 
-            type="button"
-            @click="exitManageMode" 
-            class="px-4 py-2 rounded-full bg-[#fceef4] hover:bg-[#fadce8] text-[#c24b78] border border-[#f5cbdc] shadow-sm transition-all cursor-pointer"
-          >
-            {{ t('library.exitManage') }}
-          </button>
-        </div>
-      </template>
+    <!-- 背景微光氛围层 (按主题自适应，低算力漫反射) -->
+    <div 
+      v-if="currentTheme === 'minimal'" 
+      class="pointer-events-none absolute -top-10 left-1/4 w-[500px] h-[180px] bg-[#00f2ff]/5 blur-[90px] z-0"
+    ></div>
+    <div 
+      v-else-if="currentTheme === 'anime'" 
+      class="pointer-events-none absolute -top-12 left-1/4 w-[540px] h-[160px] bg-gradient-to-r from-[#ffeef5]/30 via-[#f0f6ff]/25 to-transparent blur-[80px] z-0"
+    ></div>
 
-      <!-- 正常模式右侧操作区：云存档、批量管理、一键重新部署、搜索 -->
-      <template v-else-if="!searchMode" #actions>
-        <button 
-          type="button"
-          @click="showCloudSave" 
-          class="px-4 py-2 rounded-full text-xs font-bold text-[#524463] hover:text-[#d45989] bg-white border border-white hover:border-[#f5cbdc] shadow-sm hover:shadow-[0_2px_8px_rgba(234,143,180,0.2)] transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-        >
-          {{ t('cloud.title') }}
-        </button>
-        <button 
-          type="button"
-          :disabled="activeFilter !== 'titan_protocol'" 
-          @click="enterManageMode" 
-          class="px-4 py-2 rounded-full text-xs font-bold text-[#524463] hover:text-[#d45989] bg-white border border-white hover:border-[#f5cbdc] disabled:opacity-30 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer active:scale-95" 
-          :title="activeFilter !== 'titan_protocol' ? t('library.steamOnlyTip') : ''"
-        >
-          {{ t('library.batchManage') }}
-        </button>
-        <button 
-          type="button"
-          @click="handleRedeployAll" 
-          class="px-4 py-2 rounded-full text-xs font-bold text-[#524463] hover:text-[#d45989] bg-white border border-white hover:border-[#f5cbdc] shadow-sm transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-        >
-          {{ t('library.redeployAll') }}
-        </button>
-        <button 
-          type="button"
-          @click="enterSearchMode" 
-          class="w-9 h-9 rounded-full flex items-center justify-center text-[#524463] hover:text-[#d45989] bg-white border border-white hover:border-[#f5cbdc] shadow-sm hover:shadow-[0_2px_8px_rgba(234,143,180,0.2)] transition-all cursor-pointer active:scale-95" 
-          :title="t('library.searchMode.entry')"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-        </button>
-      </template>
-
-      <!-- 搜索模式状态 -->
-      <template v-else #actions>
-        <div class="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-white border border-[#f5cbdc] text-[#2b2238] w-72 shadow-md">
-          <svg class="w-4 h-4 text-[#ea8fb4] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-          <input 
-            ref="searchInputRef" 
-            v-model="searchQuery" 
-            type="text" 
-            :placeholder="t('library.searchMode.placeholder', { count: libraryStore.items.length })" 
-            class="flex-1 bg-transparent text-xs text-[#2b2238] placeholder-slate-400 focus:outline-none" 
-            @keyup.esc="exitSearchMode" 
-          />
-          <span class="text-xs text-[#8a7a9c] whitespace-nowrap">{{ t('library.searchMode.results', { count: filteredList.length }) }}</span>
-          <button type="button" @click="exitSearchMode" class="text-slate-400 hover:text-[#d45989] text-xs cursor-pointer">✕</button>
-        </div>
-      </template>
-    </AnimeGameGrid>
-
-    <TechGameGrid
-      v-else-if="currentTheme === 'minimal'"
-      :tabs="libraryTabs"
-      :active-tab="activeFilter"
-      :items="filteredList"
-      :is-fetching="false"
-      :manage-mode="manageMode"
-      :selected-ids="selectedIds"
-      :empty-text="t('library.noAssets')"
-      :is-library-view="true"
-      :hide-controls="true"
-      :local-steam-first="true"
-      @select-tab="(tabId) => activeFilter = tabId"
-      @card-action="handleCardClick"
-      @card-contextmenu="handleCardContextMenu"
-      @toggle-select="toggleSelectCard"
-    >
-      <!-- 管理模式操作条 -->
-      <template v-if="manageMode" #manage-bar>
-        <div class="flex items-center gap-3 w-full animate-fade-in text-xs py-0.5">
-          <span class="font-bold text-[#00f2ff] whitespace-nowrap">{{ t('library.selectedCount', { count: selectedIds.size }) }}</span>
-          <button 
-            type="button"
-            @click="toggleSelectAllCards" 
-            class="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/10 transition-all cursor-pointer"
-          >
-            {{ t('library.selectAll') }}
-          </button>
-          <select 
-            v-model="sortMode" 
-            class="px-3 py-2 rounded-xl bg-[#0a0e17] border border-white/10 text-white focus:outline-none cursor-pointer"
-          >
-            <option value="newest">{{ t('library.sortNewest') }}</option>
-            <option value="oldest">{{ t('library.sortOldest') }}</option>
-            <option value="name">{{ t('library.sortName') }}</option>
-          </select>
-          <button 
-            type="button"
-            @click="batchRedeploy" 
-            :disabled="selectedIds.size === 0" 
-            class="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/10 disabled:opacity-30 transition-all cursor-pointer"
-          >
-            {{ t('library.batchRedeploy') }}
-          </button>
-          <button 
-            type="button"
-            @click="batchToggleAutoUpdate" 
-            :disabled="selectedIds.size === 0" 
-            class="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/10 disabled:opacity-30 transition-all cursor-pointer"
-          >
-            {{ allSelectedAutoUpdateOn ? t('library.contextMenu.disableUpdate') : t('library.contextMenu.enableUpdate') }}
-          </button>
-          <button 
-            type="button"
-            @click="batchUninstall" 
-            :disabled="selectedIds.size === 0" 
-            class="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/10 disabled:opacity-30 transition-all cursor-pointer"
-          >
-            {{ t('library.batchUninstall') }}
-          </button>
-          <button 
-            type="button"
-            @click="batchRemoveRecords" 
-            :disabled="selectedIds.size === 0" 
-            class="px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 disabled:opacity-30 transition-all cursor-pointer"
-          >
-            {{ t('library.contextMenu.deleteRecord') }}
-          </button>
-          <button 
-            type="button"
-            @click="showBatchDeployModal" 
-            class="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/10 transition-all cursor-pointer whitespace-nowrap"
-          >
-            {{ t('library.batchDeploy') }}
-          </button>
-          <div class="flex-1"></div>
-          <button 
-            type="button"
-            @click="exitManageMode" 
-            class="px-4 py-2 rounded-xl bg-white/[0.1] hover:bg-white/[0.18] text-white border border-white/15 transition-all cursor-pointer"
-          >
-            {{ t('library.exitManage') }}
-          </button>
-        </div>
-      </template>
-
-      <!-- 正常模式右侧操作区：云存档、批量管理、一键重新部署、搜索 -->
-      <template v-else-if="!searchMode" #actions>
-        <button 
-          type="button"
-          @click="showCloudSave" 
-          class="px-4 py-2 rounded-xl text-xs font-medium text-[#8295ab] hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-        >
-          {{ t('cloud.title') }}
-        </button>
-        <button 
-          type="button"
-          :disabled="activeFilter !== 'titan_protocol'" 
-          @click="enterManageMode" 
-          class="px-4 py-2 rounded-xl text-xs font-medium text-[#8295ab] hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] disabled:opacity-30 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95" 
-          :title="activeFilter !== 'titan_protocol' ? t('library.steamOnlyTip') : ''"
-        >
-          {{ t('library.batchManage') }}
-        </button>
-        <button 
-          type="button"
-          @click="handleRedeployAll" 
-          class="px-4 py-2 rounded-xl text-xs font-medium text-[#8295ab] hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-        >
-          {{ t('library.redeployAll') }}
-        </button>
-        <button 
-          type="button"
-          @click="enterSearchMode" 
-          class="w-9 h-9 rounded-xl flex items-center justify-center text-[#8295ab] hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer active:scale-95" 
-          :title="t('library.searchMode.entry')"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-        </button>
-      </template>
-
-      <!-- 搜索模式状态 -->
-      <template v-else #actions>
-        <div class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-[#0a0e17] border border-cyan-400/40 text-white w-72 shadow-lg">
-          <svg class="w-4 h-4 text-[#00f2ff] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-          <input 
-            ref="searchInputRef" 
-            v-model="searchQuery" 
-            type="text" 
-            :placeholder="t('library.searchMode.placeholder', { count: libraryStore.items.length })" 
-            class="flex-1 bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none" 
-            @keyup.esc="exitSearchMode" 
-          />
-          <span class="text-xs text-slate-400 whitespace-nowrap">{{ t('library.searchMode.results', { count: filteredList.length }) }}</span>
-          <button type="button" @click="exitSearchMode" class="text-slate-400 hover:text-white text-xs cursor-pointer">✕</button>
-        </div>
-      </template>
-    </TechGameGrid>
-
-    <!-- 原版经典工业暗黑与二次元模式：100% 保持不动 (Scope Lock) -->
-    <template v-else>
     <!-- 管理态操作条：排序 + 批量操作 -->
     <div v-if="manageMode" class="flex items-center gap-3 mb-5 z-20 shrink-0 h-9 animate-fade-in">
-      <span class="text-xs font-code tracking-wider whitespace-nowrap" :class="currentTheme === 'anime' ? 'text-pink-600 font-bold' : 'text-[#00f3ff]'">{{ t('library.selectedCount', { count: selectedIds.size }) }}</span>
+      <span class="text-xs font-code tracking-wider whitespace-nowrap" :class="currentTheme === 'anime' ? 'text-pink-600 font-bold' : currentTheme === 'minimal' ? 'text-[#00f2ff] font-bold' : 'text-[#00f3ff]'">{{ t('library.selectedCount', { count: selectedIds.size }) }}</span>
       <button 
         type="button"
         @click="toggleSelectAllCards"
-        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
         :class="[
-          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
+          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : currentTheme === 'minimal' ? 'rounded-xl border-white/10 text-white bg-white/[0.06] hover:bg-white/[0.12]' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
         ]"
       >
         {{ t('library.selectAll') }}
@@ -307,7 +36,9 @@
       <select 
         v-model="sortMode"
         class="h-9 px-3 border text-xs font-code cursor-pointer focus:outline-none"
-        :class="currentTheme === 'anime' ? 'bg-white border-pink-200 rounded-full text-slate-700 focus:border-pink-400 shadow-sm' : 'bg-[#0e1118] border-white/[0.1] rounded-lg text-white/80 focus:border-white/30'"
+        :class="[
+          currentTheme === 'anime' ? 'bg-white border-pink-200 rounded-full text-slate-700 focus:border-pink-400 shadow-sm' : currentTheme === 'minimal' ? 'bg-[#0a0e17] border-white/10 rounded-xl text-white' : 'bg-[#0e1118] border-white/[0.1] rounded-lg text-white/80 focus:border-white/30'
+        ]"
       >
         <option value="newest">{{ t('library.sortNewest') }}</option>
         <option value="oldest">{{ t('library.sortOldest') }}</option>
@@ -317,9 +48,9 @@
         type="button"
         @click="batchRedeploy"
         :disabled="selectedIds.size === 0"
-        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
         :class="[
-          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
+          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : currentTheme === 'minimal' ? 'rounded-xl border-white/10 text-white bg-white/[0.06] hover:bg-white/[0.12]' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
         ]"
       >
         {{ t('library.batchRedeploy') }}
@@ -328,9 +59,9 @@
         type="button"
         @click="batchToggleAutoUpdate"
         :disabled="selectedIds.size === 0"
-        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
         :class="[
-          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
+          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : currentTheme === 'minimal' ? 'rounded-xl border-white/10 text-white bg-white/[0.06] hover:bg-white/[0.12]' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
         ]"
       >
         {{ allSelectedAutoUpdateOn ? t('library.contextMenu.disableUpdate') : t('library.contextMenu.enableUpdate') }}
@@ -339,9 +70,9 @@
         type="button"
         @click="batchUninstall"
         :disabled="selectedIds.size === 0"
-        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
         :class="[
-          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
+          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : currentTheme === 'minimal' ? 'rounded-xl border-white/10 text-white bg-white/[0.06] hover:bg-white/[0.12]' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
         ]"
       >
         {{ t('library.batchUninstall') }}
@@ -350,9 +81,9 @@
         type="button"
         @click="batchRemoveRecords"
         :disabled="selectedIds.size === 0"
-        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed !text-red-500 hover:!bg-red-500/10 hover:!border-red-500/40"
+        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer !text-red-500 hover:!bg-red-500/10 hover:!border-red-500/40"
         :class="[
-          currentTheme === 'anime' ? 'rounded-full border-pink-200 bg-white/80 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02]'
+          currentTheme === 'anime' ? 'rounded-full border-pink-200 bg-white/80 shadow-sm' : currentTheme === 'minimal' ? 'rounded-xl border-red-500/30 bg-red-500/15' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02]'
         ]"
       >
         {{ t('library.contextMenu.deleteRecord') }}
@@ -361,9 +92,9 @@
       <button 
         type="button"
         @click="showBatchDeployModal"
-        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200"
+        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 cursor-pointer whitespace-nowrap"
         :class="[
-          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
+          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : currentTheme === 'minimal' ? 'rounded-xl border-white/10 text-white bg-white/[0.06] hover:bg-white/[0.12]' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
         ]"
       >
         {{ t('library.batchDeploy') }}
@@ -373,16 +104,16 @@
       <button 
         type="button"
         @click="exitManageMode"
-        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+        class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
         :class="[
-          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
+          currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : currentTheme === 'minimal' ? 'rounded-xl border-white/15 text-white bg-white/[0.1] hover:bg-white/[0.18]' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
         ]"
       >
         {{ t('library.exitManage') }}
       </button>
     </div>
 
-    <!-- 顶部工具行：px-8 对齐下方网格边缘，h-9 紧凑机能风 -->
+    <!-- 顶部工具行：正常态 (!manageMode && !searchMode) -->
     <div v-else-if="!searchMode" class="flex items-center gap-3 mb-5 z-20 shrink-0 h-9">
       <!-- 左侧分类频段 -->
       <div class="flex items-center gap-3">
@@ -390,16 +121,33 @@
           v-for="tab in TABS"
           :key="tab"
           @click="activeFilter = tab"
-          class="relative h-10 px-6 text-xs font-bold tracking-wider transition-all duration-300 flex items-center border uppercase overflow-hidden group"
+          class="relative h-10 px-6 text-xs font-bold tracking-wider transition-all duration-300 flex items-center uppercase overflow-hidden group cursor-pointer whitespace-nowrap"
           :class="[
-            currentTheme === 'anime' ? 'rounded-full' : 'rounded-[4px]',
+            currentTheme === 'anime' 
+              ? 'rounded-full' 
+              : currentTheme === 'minimal' 
+                ? 'rounded-xl border-0 text-[13.5px] font-medium tracking-wide' 
+                : 'rounded-[4px] border',
             activeFilter === tab 
-              ? (currentTheme === 'anime' ? 'bg-[#38bdf8]/15 text-[#0284c7] border-[#38bdf8]/60 shadow-[0_2px_12px_rgba(56,189,248,0.25)] font-black' : 'bg-[#00f3ff]/15 text-[#00f3ff] border-[#00f3ff]/50 shadow-[0_0_12px_rgba(0,243,255,0.15)] tab-active-glow') 
-              : (currentTheme === 'anime' ? 'bg-white/80 text-slate-600 border-pink-100 hover:bg-white hover:text-slate-900 shadow-sm' : 'bg-white/[0.02] text-zinc-400 border-white/5 hover:border-white/15 hover:text-zinc-200 hover:bg-white/[0.04]')
+              ? (currentTheme === 'anime' 
+                  ? 'bg-white text-[#1e192b] border-2 border-[#00e5ff] shadow-[0_2px_12px_rgba(56,189,248,0.25)] font-black scale-[1.02]' 
+                  : currentTheme === 'minimal' 
+                    ? 'text-white bg-white/[0.1] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] font-bold' 
+                    : 'bg-[#00f3ff]/15 text-[#00f3ff] border-[#00f3ff]/50 shadow-[0_0_12px_rgba(0,243,255,0.15)] tab-active-glow') 
+              : (currentTheme === 'anime' 
+                  ? 'bg-white/80 text-slate-600 border border-pink-100 hover:bg-white hover:text-slate-900 shadow-sm' 
+                  : currentTheme === 'minimal' 
+                    ? 'text-[#8295ab] hover:text-[#d0e0f2] hover:bg-white/[0.04]' 
+                    : 'bg-white/[0.02] text-zinc-400 border-white/5 hover:border-white/15 hover:text-zinc-200 hover:bg-white/[0.04]')
           ]"
         >
-          <!-- 选中瞬间从左向右横扫而过的流光 -->
-          <span v-if="activeFilter === tab" class="absolute inset-0 pointer-events-none sweep-animation bg-gradient-to-r from-transparent via-white/40 to-transparent"></span>
+          <!-- 经典主题扫光 -->
+          <span v-if="currentTheme !== 'anime' && currentTheme !== 'minimal' && activeFilter === tab" class="absolute inset-0 pointer-events-none sweep-animation bg-gradient-to-r from-transparent via-white/40 to-transparent"></span>
+          <!-- 未来科技主题底部微晶细光条 -->
+          <div 
+            v-if="currentTheme === 'minimal' && activeFilter === tab" 
+            class="absolute bottom-0 inset-x-2.5 h-[2.5px] bg-[#00f2ff] rounded-full shadow-[0_0_8px_#00f2ff]"
+          ></div>
           <span class="relative z-10">{{ getTabLabel(tab) }}</span>
         </button>
       </div>
@@ -408,9 +156,13 @@
       <div class="flex items-center gap-3">
         <button 
           @click="showCloudSave"
-          class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200"
+          class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 cursor-pointer active:scale-95"
           :class="[
-            currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
+            currentTheme === 'anime' 
+              ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' 
+              : currentTheme === 'minimal'
+                ? 'rounded-xl border-white/[0.06] text-[#8295ab] hover:text-white bg-white/[0.04] hover:bg-white/[0.08]'
+                : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
           ]"
         >
           {{ t('cloud.title') }}
@@ -418,12 +170,16 @@
         <button 
           :disabled="activeFilter !== 'titan_protocol'"
           @click="enterManageMode"
-          class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95"
           :class="[
-            currentTheme === 'anime' ? 'rounded-full' : 'rounded-[4px]',
+            currentTheme === 'anime' 
+              ? 'rounded-full' 
+              : currentTheme === 'minimal'
+                ? 'rounded-xl border-white/[0.06] text-[#8295ab] hover:text-white bg-white/[0.04] hover:bg-white/[0.08]'
+                : 'rounded-[4px]',
             manageMode 
-              ? (currentTheme === 'anime' ? 'bg-pink-100 text-pink-600 border-pink-300 shadow-sm' : 'bg-white/[0.15] text-white border-white/30 font-semibold') 
-              : (currentTheme === 'anime' ? 'border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30')
+              ? (currentTheme === 'anime' ? 'bg-pink-100 text-pink-600 border-pink-300 shadow-sm' : currentTheme === 'minimal' ? 'bg-white/[0.15] text-white' : 'bg-white/[0.15] text-white border-white/30 font-semibold') 
+              : (currentTheme === 'anime' ? 'border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : currentTheme === 'minimal' ? 'border-white/[0.06] text-[#8295ab] hover:text-white bg-white/[0.04] hover:bg-white/[0.08]' : 'border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30')
           ]"
           :title="activeFilter !== 'titan_protocol' ? t('library.steamOnlyTip') : ''"
         >
@@ -431,9 +187,13 @@
         </button>
         <button 
           @click="handleRedeployAll"
-          class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200"
+          class="h-9 px-4 text-xs font-bold tracking-wider flex items-center border transition-all duration-200 cursor-pointer active:scale-95"
           :class="[
-            currentTheme === 'anime' ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
+            currentTheme === 'anime' 
+              ? 'rounded-full border-pink-200 text-slate-700 bg-white/80 hover:bg-white hover:text-pink-600 shadow-sm' 
+              : currentTheme === 'minimal'
+                ? 'rounded-xl border-white/[0.06] text-[#8295ab] hover:text-white bg-white/[0.04] hover:bg-white/[0.08]'
+                : 'rounded-[4px] border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30'
           ]"
         >
           {{ t('library.redeployAll') }}
@@ -442,9 +202,13 @@
       <div class="flex-1"></div>
       <button 
         @click="enterSearchMode"
-        class="h-9 w-9 border flex items-center justify-center transition-all duration-200"
+        class="h-9 w-9 border flex items-center justify-center transition-all duration-200 cursor-pointer active:scale-95"
         :class="[
-          currentTheme === 'anime' ? 'rounded-full border-pink-200 bg-white/80 text-slate-600 hover:text-pink-600 hover:border-pink-400 shadow-sm' : 'rounded-[4px] border-white/10 bg-white/[0.02] text-zinc-400 hover:text-[#00f3ff] hover:border-[#00f3ff]/40'
+          currentTheme === 'anime' 
+            ? 'rounded-full border-pink-200 bg-white/80 text-slate-600 hover:text-pink-600 hover:border-pink-400 shadow-sm' 
+            : currentTheme === 'minimal'
+              ? 'rounded-xl border-white/[0.06] bg-white/[0.04] text-[#8295ab] hover:text-white hover:bg-white/[0.08]'
+              : 'rounded-[4px] border-white/10 bg-white/[0.02] text-zinc-400 hover:text-[#00f3ff] hover:border-[#00f3ff]/40'
         ]"
         :title="t('library.searchMode.entry')"
       >
@@ -458,9 +222,11 @@
         class="flex-1 h-full flex items-center gap-3 px-4 border transition-all duration-300"
         :class="currentTheme === 'anime' 
           ? 'bg-white border-pink-300 rounded-full shadow-[0_4px_20px_rgba(244,114,182,0.15)] text-slate-800' 
-          : 'bg-[#0e1118] rounded-lg border-white/20 shadow-sm text-white'"
+          : currentTheme === 'minimal'
+            ? 'bg-[#0a0e17] rounded-xl border-cyan-400/40 text-white shadow-lg'
+            : 'bg-[#0e1118] rounded-lg border-white/20 shadow-sm text-white'"
       >
-        <svg class="w-4 h-4 shrink-0" :class="currentTheme === 'anime' ? 'text-pink-500' : 'text-white/50'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <svg class="w-4 h-4 shrink-0" :class="currentTheme === 'anime' ? 'text-pink-500' : currentTheme === 'minimal' ? 'text-[#00f2ff]' : 'text-white/50'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
         <input 
           ref="searchInputRef"
           v-model="searchQuery" 
@@ -473,7 +239,7 @@
         <span class="text-xs font-code whitespace-nowrap shrink-0" :class="currentTheme === 'anime' ? 'text-slate-500' : 'text-zinc-500'">
           {{ t('library.searchMode.results', { count: filteredList.length }) }}
         </span>
-        <button @click="exitSearchMode" class="transition-colors shrink-0 flex items-center" :class="currentTheme === 'anime' ? 'text-slate-400 hover:text-slate-800' : 'text-zinc-500 hover:text-white'">
+        <button @click="exitSearchMode" class="transition-colors shrink-0 flex items-center cursor-pointer" :class="currentTheme === 'anime' ? 'text-slate-400 hover:text-slate-800' : 'text-zinc-500 hover:text-white'">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
       </div>
@@ -485,29 +251,44 @@
         v-if="filteredList.length > 0"
         :items="filteredList"
         :columns="currentColumns"
-        :aspectRatio="0.75"
+        :aspectRatio="themeAspectRatio"
       >
         <template #default="{ items }">
           <div
             v-for="item in items"
             :key="item.id"
-            class="relative rounded-theme transition-shadow"
-            :class="{ 'ring-2 ring-white/50 rounded-xl': manageMode && selectedIds.has(item.id) }"
+            class="relative transition-all duration-200"
+            :class="[
+              currentTheme === 'anime' ? 'rounded-[32px]' : currentTheme === 'minimal' ? 'rounded-2xl' : 'rounded-theme',
+              manageMode && selectedIds.has(item.id) 
+                ? (currentTheme === 'anime' 
+                    ? 'ring-3 ring-[#ea8fb4] shadow-[0_0_24px_rgba(234,143,180,0.4)]' 
+                    : currentTheme === 'minimal' 
+                      ? 'ring-2 ring-[#00f2ff] shadow-[0_0_20px_rgba(0,242,255,0.25)]' 
+                      : 'ring-2 ring-white/50 rounded-xl') 
+                : ''
+            ]"
             @click="manageMode && toggleSelectCard(item.id)"
           >
+            <!-- 多选管理模式下的勾选框 -->
             <div
               v-if="manageMode"
-              class="absolute top-2 left-2 z-30 w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-colors"
-              :class="selectedIds.has(item.id) 
-                ? (currentTheme === 'anime' ? 'bg-[#ff66b2] border-[#ff66b2]' : 'bg-[#00f3ff] border-[#00f3ff]') 
-                : (currentTheme === 'anime' ? 'bg-white/90 border-pink-300' : 'bg-black/60 border-white/30 hover:border-white/60')"
+              class="absolute top-3 left-3 z-30 w-5 h-5 flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md"
+              :class="[
+                currentTheme === 'anime' ? 'rounded-full' : currentTheme === 'minimal' ? 'rounded-md' : 'rounded',
+                selectedIds.has(item.id) 
+                  ? (currentTheme === 'anime' ? 'bg-[#ea8fb4] border-2 border-[#ea8fb4] text-white shadow-[0_0_8px_rgba(234,143,180,0.6)]' : currentTheme === 'minimal' ? 'bg-[#00f2ff] border border-[#00f2ff] text-[#06080e] shadow-[0_0_10px_#00f2ff]' : 'bg-[#00f3ff] border border-[#00f3ff]') 
+                  : (currentTheme === 'anime' ? 'bg-white/90 border border-[#f5cbdc] hover:border-[#ea8fb4] text-transparent' : currentTheme === 'minimal' ? 'bg-black/60 border border-white/30 hover:border-[#00f2ff] text-transparent' : 'bg-black/60 border border-white/30 hover:border-white/60')
+              ]"
               @click.stop="toggleSelectCard(item.id)"
             >
-              <svg v-if="selectedIds.has(item.id)" class="w-3.5 h-3.5" :class="currentTheme === 'anime' ? 'text-white' : 'text-black'" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+              <svg v-if="selectedIds.has(item.id)" class="w-3.5 h-3.5" :class="currentTheme === 'anime' ? 'text-white' : currentTheme === 'minimal' ? 'text-black' : 'text-black'" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
             </div>
+            
+            <!-- 卡片分发 -->
             <AnimeGameCard 
               v-if="currentTheme === 'anime'"
-              :id="item.id"
+              :id="String(item.id)"
               :title="item.title"
               :tags="[item.type.toUpperCase()]"
               :image="item.cover"
@@ -516,11 +297,13 @@
               :is-installed="true"
               :hide-controls="true"
               :local-steam-first="true"
+              :show-launch-button="true"
+              @launch="() => handleCardLaunch(item)"
               @contextmenu="handleCardContextMenu"
             />
             <TechGameCard
               v-else-if="currentTheme === 'minimal'"
-              :id="item.id"
+              :id="String(item.id)"
               :title="item.title"
               :tags="[item.type.toUpperCase()]"
               :image="item.cover"
@@ -529,6 +312,8 @@
               :is-installed="true"
               :hide-controls="true"
               :local-steam-first="true"
+              :show-launch-button="true"
+              @launch="() => handleCardLaunch(item)"
               @contextmenu="handleCardContextMenu"
             />
             <GameCard 
@@ -543,6 +328,8 @@
               :hideControls="true"
               :showTopRightBadge="true"
               :local-steam-first="true"
+              :show-launch-button="true"
+              @launch="() => handleCardLaunch(item)"
               @contextmenu="handleCardContextMenu"
             />
           </div>
@@ -556,8 +343,6 @@
         <p class="text-xs font-bold text-zinc-400 uppercase tracking-widest">{{ t('library.noAssets') }}</p>
       </div>
     </div>
-    
-    </template>
 
     <!-- 管理态批量操作菜单 -->
     <ContextMenu 
@@ -682,6 +467,41 @@
           <span class="w-5 text-center">🧩</span> {{ t('library.contextMenu.dlcManage') }}
         </button>
       </template>
+      <template v-if="menu.item?.type === 'titan_protocol' && isPatchSupported(menu.item)">
+        <div class="h-px my-1" :class="currentTheme === 'anime' ? 'bg-pink-100' : 'bg-white/5'"></div>
+        <template v-if="!authStore.isVip || (authStore.user?.vipLevel ?? 0) === 0">
+          <button 
+            @click="handleAction('gotoPatchCommunity')" 
+            class="w-full text-left px-4 py-2.5 text-sm font-bold rounded-lg flex items-center gap-3 transition-colors cursor-pointer"
+            :class="currentTheme === 'anime' 
+              ? 'text-[#262133] hover:bg-pink-50/80 hover:text-[#ff66b2]' 
+              : 'text-gray-400 hover:bg-white/10 hover:text-white'"
+          >
+            <span class="w-5 text-center">🌐</span> {{ t('library.contextMenu.gotoPatchCommunity') }}
+          </button>
+        </template>
+        <template v-else>
+          <button 
+            @click="handleAction('autoInstallPatch')" 
+            class="w-full text-left px-4 py-2.5 text-sm font-bold rounded-lg flex items-center gap-3 transition-colors cursor-pointer"
+            :class="currentTheme === 'anime' 
+              ? 'text-[#1e192b] hover:bg-gradient-to-r hover:from-[#ffd1e6]/70 hover:to-[#d4f4ff]/70 hover:text-[#d6336c]' 
+              : 'text-[#00f3ff] hover:bg-[#00f3ff] hover:text-black'"
+          >
+            <span class="w-5 text-center">⚡</span> {{ t('library.contextMenu.autoInstallPatch') }}
+          </button>
+          <div class="h-px my-1" :class="currentTheme === 'anime' ? 'bg-pink-100' : 'bg-white/5'"></div>
+          <button 
+            @click="handleAction('openPatcher')" 
+            class="w-full text-left px-4 py-2.5 text-sm font-bold rounded-lg flex items-center gap-3 transition-colors cursor-pointer"
+            :class="currentTheme === 'anime' 
+              ? 'text-[#262133] hover:bg-pink-50/80 hover:text-[#ff66b2]' 
+              : 'text-gray-400 hover:bg-white/10 hover:text-white'"
+          >
+            <span class="w-5 text-center">🛠️</span> {{ t('library.contextMenu.openPatcher') }}
+          </button>
+        </template>
+      </template>
       <!-- fix50g: 非 protocol 类型恢复右键"移除记录"(继承上方原生分割线, 无双杠) -->
       <template v-if="menu.item?.type !== 'titan_protocol'">
         <button
@@ -696,7 +516,21 @@
       </template>
     </ContextMenu>
 
+    <!-- 补丁杀软前置告知模态框 -->
+    <PatchNoticeModal
+      :visible="showPatchNoticeModal"
+      @confirm="onPatchNoticeConfirm"
+      @cancel="onPatchNoticeCancel"
+    />
+
     <!-- 资产详情模态框 -->
+    <ShareGameModal
+      v-if="isShareModalVisible"
+      :visible="isShareModalVisible"
+      :item="selectedItem"
+      @close="isShareModalVisible = false"
+    />
+
     <GameDetailModal 
       v-if="isDetailVisible"
       :visible="isDetailVisible"
@@ -775,14 +609,15 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { t } from '../i18n'
 import { useLibraryStore, appIdOf, type LibraryItem } from '../stores/libraryStore'
 import { useAuthStore } from '../stores/authStore'
+import { useSearchStore } from '../stores/searchStore'
 import { useTheme } from '../composables/useTheme'
 import ContextMenu from "./common/ContextMenu.vue"
 import GameCard from './GameCard.vue'
 import AnimeGameCard from '../themes/anime/AnimeGameCard.vue'
-import AnimeGameGrid from '../themes/anime/AnimeGameGrid.vue'
 import TechGameCard from '../themes/minimal/TechGameCard.vue'
-import TechGameGrid from '../themes/minimal/TechGameGrid.vue'
+import PatchNoticeModal from './modals/PatchNoticeModal.vue'
 import GameDetailModal from './GameDetailModal.vue'
+import ShareGameModal from './modals/ShareGameModal.vue'
 import CloudSave from './CloudSave.vue'
 import VirtualList from './VirtualList.vue'
 import Swal from 'sweetalert2'
@@ -794,15 +629,13 @@ function titanAlert(title: string, text: string, icon: 'success' | 'error' | 'wa
   tcToast(title, text, icon)
 }
 
-type LibraryType = 'titan_protocol' | 'game' | 'tool' | 'patch'
+type LibraryType = 'titan_protocol' | 'game' | 'patch'
 
-const TABS = ['titan_protocol', 'game', 'tool', 'patch'] as const
+const TABS = ['titan_protocol'] as const
 
 const libraryTabs = computed(() => [
   { id: 'titan_protocol', label: t('library.tabSteamLib') },
-  { id: 'game', label: t('library.tabGame') },
-  { id: 'tool', label: t('library.tabTool') },
-  { id: 'patch', label: t('library.tabPatch') }
+
 ])
 
 const handleCardClick = (item: any) => {
@@ -813,10 +646,69 @@ const handleCardClick = (item: any) => {
   }
 }
 
+const handleCardLaunch = async (item: any) => {
+  let appId = ''
+  if (typeof item === 'string') {
+    const m = item.match(/(\d+)$/)
+    appId = m ? m[1] : ''
+  } else if (item && typeof item === 'object') {
+    appId = appIdOf(item)
+  }
+  if (!appId) {
+    tcToast(t('library.launch.failTitle'), t('library.launch.noAppId'), 'error')
+    return
+  }
+
+  try {
+    const res = await window.electron.invoke('titan:launch-game', appId) as { success: boolean; notInstalled?: boolean; msg?: string }
+    if (!res.success) {
+      if (res.notInstalled) {
+        // 核心防呆：未在 Steam 安装
+        const currentThemeAttr = document.documentElement.getAttribute('data-theme')
+        const isAnimeTheme = currentThemeAttr === 'anime'
+        const isMinimalTheme = currentThemeAttr === 'minimal'
+
+        await Swal.fire({
+          title: t('library.launch.notInstalledTitle'),
+          text: t('library.launch.notInstalledDesc'),
+          icon: 'info',
+          confirmButtonText: t('common.confirm') || '知道了',
+          background: isAnimeTheme ? '#ffffff' : (isMinimalTheme ? 'rgba(16, 22, 35, 0.95)' : '#121212'),
+          color: isAnimeTheme ? '#1e293b' : '#fff',
+          confirmButtonColor: isAnimeTheme ? '#ea8fb4' : (isMinimalTheme ? '#00f2ff' : '#00f3ff'),
+          customClass: {
+            popup: isAnimeTheme 
+              ? 'border border-pink-200/90 shadow-[0_8px_25px_rgba(244,114,182,0.25)] rounded-2xl' 
+              : (isMinimalTheme ? 'border border-[#00f2ff]/35 shadow-[0_0_25px_rgba(0,242,255,0.2)] rounded-xl' : 'border border-white/10 rounded-lg')
+          }
+        })
+      } else {
+        tcToast(t('library.launch.failTitle'), res.msg || t('library.launch.unknownError'), 'error')
+      }
+    } else {
+      libraryStore.setAppRunning(appId, true)
+      tcToast(t('library.launch.successTitle') || '启动中', t('library.launch.successDesc') || '已唤起 Steam 启动游戏', 'success')
+    }
+  } catch (e: any) {
+    tcToast(t('library.launch.failTitle'), e.message || t('library.launch.errorDefault'), 'error')
+  }
+}
+
 const libraryStore = useLibraryStore()
 const authStore = useAuthStore()
+const searchStore = useSearchStore()
+
+const isPatchSupported = (item: any) => {
+  if (!item) return false
+  const aid = appIdOf(item)
+  return searchStore.checkRadarStatus(aid) === 'yellow'
+}
 
 const currentColumns = ref(5)
+const themeAspectRatio = computed(() => {
+  if (currentTheme.value === 'anime') return 0.75
+  return 0.68
+})
 const updateColumns = () => {
   const w = window.innerWidth
   if (w < 1024) currentColumns.value = 3
@@ -862,6 +754,7 @@ const handleGlobalKeydown = (e: KeyboardEvent) => {
 }
 const menu = ref<{ show: boolean; x: number; y: number; item: LibraryItem | null }>({ show: false, x: 0, y: 0, item: null })
 const isDetailVisible = ref(false)
+const isShareModalVisible = ref(false)
 const selectedItem = ref<LibraryItem | null>(null)
 // TITAN-EXP: 实验功能开关预载（挂载 + 视图激活刷新；右键 0ms 同步渲染，无点击时 IPC）
 const prefOnlineLaunch = ref(false)
@@ -887,7 +780,7 @@ async function refreshDlcStatus() {
   } catch { /* 读取失败按未安装 */ }
 }
 loadExpPrefs()
-watch(() => props.active, (v) => { if (v) loadExpPrefs() })
+watch(() => props.active, (v) => { if (v) { loadExpPrefs(); libraryStore.load() } })
 
 // fix50(CTO): 跨组件状态一致 —— ExpFeaturesModal 安装/卸载后经 tools:changed 广播联动,右键菜单不呈现陈旧状态
 let offToolsChanged: (() => void) | null = null
@@ -923,7 +816,7 @@ const filteredList = computed(() => {
   }
 })
 
-const tabKeys: Record<string, string> = { titan_protocol: 'library.tabSteamLib', game: 'library.tabGame', tool: 'library.tabTool', patch: 'library.tabPatch' }
+const tabKeys: Record<string, string> = { titan_protocol: 'library.tabSteamLib', game: 'library.tabGame', patch: 'library.tabPatch' }
 const getTabLabel = (tab: LibraryType) => tabKeys[tab] ? t(tabKeys[tab]) : tab
 
 const handleCardContextMenu = (data: { id: string; x: number; y: number; title: string; type: string; installed: boolean }) => {
@@ -944,6 +837,10 @@ const handleCardContextMenu = (data: { id: string; x: number; y: number; title: 
 
 const openGameDetail = (item: LibraryItem) => {
   selectedItem.value = item
+  if (item.type === 'sharegame') {
+    isShareModalVisible.value = true
+    return
+  }
   isDetailVisible.value = true
 }
 
@@ -995,13 +892,68 @@ const handleOnlineLaunch = async (item: LibraryItem) => {
   }
 }
 
+// 补丁杀软前置告知弹窗控制状态与流程
+const showPatchNoticeModal = ref(false)
+const targetPatchAppId = ref<number | null>(null)
+
+const onPatchNoticeConfirm = () => {
+  showPatchNoticeModal.value = false
+  if (targetPatchAppId.value) {
+    startPatchInstallFlow(targetPatchAppId.value)
+  }
+}
+
+const onPatchNoticeCancel = () => {
+  showPatchNoticeModal.value = false
+  targetPatchAppId.value = null
+}
+
+const startPatchInstallFlow = async (appId: number) => {
+  if (!appId) return
+  tcToast(
+    t('library.patchNotice.installingTitle') || '正在检索并部署补丁...', 
+    t('library.patchNotice.installingDesc') || '请稍候，这可能需要一点时间', 
+    'info'
+  )
+  try {
+    const res = await window.electron.invoke('titan:install-patch', { appid: appId }) as { success?: boolean; error?: string }
+    if (res?.success) {
+      tcToast(
+        t('library.patchNotice.dispatchedTitle') || '⚡ 官方补丁助手已就绪', 
+        t('library.patchNotice.dispatchedDesc') || '请在弹出的补丁助手窗口中点击【立即部署】即可', 
+        'success'
+      )
+    } else {
+      tcToast(res?.error || t('library.patchNotice.failTitle') || '部署补丁失败', '', 'error')
+    }
+  } catch (e: any) {
+    tcToast(e?.message || t('library.patchNotice.errorTitle') || '部署补丁异常', '', 'error')
+  }
+}
+
 const handleAction = async (action: string) => {
   const target = menu.value.item
   if (!target) return
 
   menu.value.show = false
 
-  if (action === 'onlineLaunch') {
+  if (action === 'gotoPatchCommunity') {
+    window.electron.invoke('open-external', 'https://www.modvips.com')
+  } else if (action === 'openPatcher') {
+    tcToast('正在准备官方补丁助手...', '', 'info')
+    const res = await window.electron.invoke('titan:open-patcher') as { success?: boolean; error?: string }
+    if (!res?.success) {
+      tcToast(res?.error || '打开补丁助手失败', '', 'error')
+    }
+  } else if (action === 'autoInstallPatch') {
+    targetPatchAppId.value = Number(appIdOf(target))
+    const dismissed = localStorage.getItem('tc_pref_patch_notice_dismissed') === '1'
+    if (dismissed) {
+      startPatchInstallFlow(targetPatchAppId.value)
+    } else {
+      showPatchNoticeModal.value = true
+    }
+  } else if (action === 'onlineLaunch') {
     await handleOnlineLaunch(target)
   } else if (action === 'dlcManage') {
     const res = await window.electron.invoke('tools:launch', 'dlc_manager', { appid: appIdOf(target) }) as { success?: boolean; error?: string }
@@ -1370,8 +1322,8 @@ const batchToggleAutoUpdate = async () => {
   let ok = 0
   for (const item of targets) {
     try {
-      await libraryStore.toggleAutoUpdate(item.id, enable)
-      ok++
+      const res = await window.electron.sys.toggleAutoUpdate(item.id, enable)
+      if (res?.success) ok++
     } catch { /* 单条失败静默计数 */ }
   }
   await libraryStore.load()

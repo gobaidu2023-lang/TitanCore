@@ -43,10 +43,10 @@
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
             </svg>
           </div>
-          <span class="text-sm sm:text-base font-bold" :class="cardTitleClass">物理隔离 · 零文件污染</span>
+          <span class="text-sm sm:text-base font-bold" :class="cardTitleClass">{{ t('settings.pureCardTitle') || '纯净模式 · 零文件污染' }}</span>
         </div>
         <span class="text-[11px] font-bold px-2 py-0.5 rounded border" :class="recommendBadgeClass">
-          强烈推荐
+          {{ t('settings.pureBadge') || '强烈推荐' }}
         </span>
       </div>
 
@@ -57,15 +57,15 @@
       <div class="flex flex-wrap gap-2 pt-1 border-t" :class="cardFooterBorderClass">
         <span class="text-xs px-2.5 py-1 rounded-md border flex items-center gap-1.5" :class="tagPillClass">
           <span class="w-1.5 h-1.5 rounded-full" :class="tagDotClass"></span>
-          Steam 根 0 污染
+          {{ t('settings.pureTag1') || '不碰 Steam 目录' }}
         </span>
         <span class="text-xs px-2.5 py-1 rounded-md border flex items-center gap-1.5" :class="tagPillClass">
           <span class="w-1.5 h-1.5 rounded-full" :class="tagDotClass"></span>
-          无感挂载与官方同步
+          {{ t('settings.pureTag2') || '0 污染 0 写入' }}
         </span>
         <span class="text-xs px-2.5 py-1 rounded-md border flex items-center gap-1.5" :class="tagPillClass">
           <span class="w-1.5 h-1.5 rounded-full" :class="tagDotClass"></span>
-          最高级别防封号
+          {{ t('settings.pureTag3') || '必须从 TC 启动生效' }}
         </span>
       </div>
     </div>
@@ -83,10 +83,10 @@
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
             </svg>
           </div>
-          <span class="text-sm sm:text-base font-bold" :class="cardTitleClass">底层代理 · 备用兼容</span>
+          <span class="text-sm sm:text-base font-bold" :class="cardTitleClass">{{ t('settings.classicCardTitle') || '经典模式 · 兼容兜底' }}</span>
         </div>
         <span class="text-[11px] font-bold px-2 py-0.5 rounded border" :class="classicBadgeClass">
-          备用兜底
+          {{ t('settings.classicBadge') || '经典方式' }}
         </span>
       </div>
 
@@ -97,15 +97,15 @@
       <div class="flex flex-wrap gap-2 pt-1 border-t" :class="cardFooterBorderClass">
         <span class="text-xs px-2.5 py-1 rounded-md border flex items-center gap-1.5" :class="tagPillClass">
           <span class="w-1.5 h-1.5 rounded-full" :class="classicTagDotClass"></span>
-          直接写入 Steam 根
+          {{ t('settings.classicTag1') || '部署进 Steam 根目录' }}
         </span>
         <span class="text-xs px-2.5 py-1 rounded-md border flex items-center gap-1.5" :class="tagPillClass">
           <span class="w-1.5 h-1.5 rounded-full" :class="classicTagDotClass"></span>
-          突破杀软注入拦截
+          {{ t('settings.classicTag2') || '大家熟悉的经典方式' }}
         </span>
         <span class="text-xs px-2.5 py-1 rounded-md border flex items-center gap-1.5" :class="tagPillClass">
           <span class="w-1.5 h-1.5 rounded-full" :class="classicTagDotClass"></span>
-          传统文件级劫持
+          {{ t('settings.classicTag3') || '直接开 Steam 也能用' }}
         </span>
       </div>
     </div>

@@ -9,6 +9,7 @@ import { Db } from '../db'
 import { app } from 'electron'
 import { SteamDetector } from './SteamDetector'
 import { PatternSyncService } from './PatternSyncService'
+import { Logger } from '../utils/logger'
 import { CloudSaveService } from './CloudSaveService'
 
 const execFileAsync = promisify(execFile)
@@ -18,7 +19,6 @@ export type OstMode = 'pure' | 'classic'
 
 export class ModeSwitchService {
   private static readonly MODE_KEY = 'ost_mode'
-  static readonly FAMILY_LIBRARY_MODE_KEY = 'user_pref_family_library_mode'
   private static busy = false
 
   // TC 安装目录与纯净模式工件根
@@ -142,6 +142,30 @@ export class ModeSwitchService {
     await this.retryOp(() => fs.copyFileSync(srcToml, targetToml));
   }
 
+  // 清理早期版本遗留在 Steam\bin 下的影子模块克隆文件（非 Steam 官方文件）
+  static async cleanLegacyDiversionFiles(steamPath: string): Promise<void> {
+    if (!steamPath) return
+    for (const f of ['diversion.dll', 'diversion64.dll']) {
+      await this.retryOp(() => {
+        const p = path.join(steamPath, 'bin', f)
+        if (fs.existsSync(p)) fs.unlinkSync(p)
+      }).catch(() => {})
+    }
+  }
+
+  // 经典模式下自动将 tools 最新核心件覆盖同步至 Steam 根，并清理旧遗产文件
+  static async syncClassicArtifacts(steamPath: string): Promise<void> {
+    if (!steamPath || this.getMode() !== 'classic') return
+    await this.cleanLegacyDiversionFiles(steamPath)
+    if (!this.toolsCacheReady()) return
+    await this.deployArtifactsToRoot(steamPath)
+    const tomlPath = path.join(steamPath, 'opensteamtool.toml')
+    if (!fs.existsSync(tomlPath)) {
+      await this.installTomlToRoot(steamPath)
+    }
+    this.setTomlKey(tomlPath, 'diversion', 'enabled', 'false')
+  }
+
   // TC: 一键初始化环境修复（系统自检 dll/toml 缺失入口；强杀 -> 铺文件 -> 重跑诊断全绿）
   static async repairEnvironment(): Promise<{ success: boolean; error?: string }> {
     if (this.busy || (this.deployBusyFn && this.deployBusyFn())) {
@@ -156,22 +180,67 @@ export class ModeSwitchService {
 
       await this.ensureSteamDead()
 
-      if (!this.toolsCacheReady()) {
-        if (!this.deployTrigger) return { success: false, error: 'DEPLOY_TRIGGER_MISSING' }
-        // 解除自锁：拉包期间临时释放 busy，防止被 TitanProtocol 自身拦截
+      // 优先尝试向云端拉取最新工具包（若网络离线且本地已有缓存则用本地缓存兜底，缺缓存且拉取失败才报错）
+      if (this.deployTrigger) {
         this.busy = false
-        const pull = await this.deployTrigger()
+        const pull = await this.deployTrigger().catch((err: any) => ({ success: false, error: err?.message }))
         this.busy = true
-        if (!pull?.success) return { success: false, error: 'TOOLS_PULL_FAIL:' + (pull?.error || '') }
+        if (!pull?.success && !this.toolsCacheReady()) {
+        Logger.error('ModeSwitchService', '模式切换失败: 工具包拉取失败', pull?.error)
+          return { success: false, error: 'TOOLS_PULL_FAIL:' + (pull?.error || '') }
+        }
+      } else if (!this.toolsCacheReady()) {
+        return { success: false, error: 'DEPLOY_TRIGGER_MISSING' }
       }
 
       // TC-P32: 一键环境修复时，纯净模式必须强力净化 Steam 根，杜绝代理残留与注入器冲突
+      await this.cleanLegacyDiversionFiles(steamPath)
+
+      // 清理 TC\ost\modules 下看门狗监测到的泄露垃圾目录（解决 DIAG_OST_WATCHDOG 红灯死循环）
+      const modulesDir = path.join(this.ostDir, 'modules')
+      for (const stray of ['config', 'logs', 'appcache']) {
+        const strayPath = path.join(modulesDir, stray)
+        if (fs.existsSync(strayPath)) {
+          await this.retryOp(() => fs.rmSync(strayPath, { recursive: true, force: true })).catch(() => {})
+        }
+      }
+
+      const steamLua = path.join(steamPath, 'config', 'lua')
+      const pureLua = path.join(this.ostDir, 'config', 'lua')
       if (this.getMode() === 'pure') {
-        for (const f of ['xinput1_4.dll', 'xinput1_4.dll.bak', 'dwmapi.dll', 'dwmapi.dll.bak']) {
+        // 纯净模式：若 Steam 根目录仍有未迁入的 lua 或 opensteamtool 目录，先自动合并搬入 TC\ost 并校验后再清理
+        if (fs.existsSync(steamLua)) {
+          fs.mkdirSync(pureLua, { recursive: true })
+          await this.copyDir(steamLua, pureLua).catch(() => {})
+          const srcFiles = fs.readdirSync(steamLua).filter(f => f.toLowerCase().endsWith('.lua'))
+          if (srcFiles.every(f => fs.existsSync(path.join(pureLua, f)))) {
+            await this.retryOp(() => fs.rmSync(steamLua, { recursive: true, force: true })).catch(() => {})
+          }
+        }
+        const legacyOst = path.join(steamPath, 'opensteamtool')
+        const pureOst = path.join(this.ostDir, 'opensteamtool')
+        if (fs.existsSync(legacyOst)) {
+          fs.mkdirSync(pureOst, { recursive: true })
+          await this.copyDir(legacyOst, pureOst).catch(() => {})
+          await this.retryOp(() => fs.rmSync(legacyOst, { recursive: true, force: true })).catch(() => {})
+        }
+        for (const f of ['OpenSteamTool.dll', 'OpenSteamTool.dll.bak', 'xinput1_4.dll', 'xinput1_4.dll.bak', 'opensteamtool.toml', 'opensteamtool.toml.bak', 'dwmapi.dll', 'dwmapi.dll.bak', 'cloud_redirect.dll', 'cloud_redirect.log']) {
           await this.retryOp(() => {
-            const p = path.join(steamPath, f);
-            if (fs.existsSync(p)) fs.unlinkSync(p);
-          });
+            const p = path.join(steamPath, f)
+            if (fs.existsSync(p)) fs.unlinkSync(p)
+          }).catch(() => {})
+        }
+      } else {
+        // 经典模式：若 TC\ost\config\lua 存在 lua 文件，顺手合并补回 Steam\config\lua
+        if (fs.existsSync(pureLua)) {
+          fs.mkdirSync(steamLua, { recursive: true })
+          await this.copyDir(pureLua, steamLua).catch(() => {})
+        }
+        for (const f of ['OpenSteamTool.dll', 'opensteamtool.toml']) {
+          await this.retryOp(() => {
+            const p = path.join(this.ostDir, f)
+            if (fs.existsSync(p)) fs.unlinkSync(p)
+          }).catch(() => {})
         }
       }
 
@@ -185,7 +254,20 @@ export class ModeSwitchService {
       const tomlNow = path.join(activeRoot, 'opensteamtool.toml')
       this.setTomlKey(tomlNow, 'diversion', 'enabled', this.getMode() === 'pure' ? 'true' : 'false')
       const cloudEnabled = Db.get<boolean>('user_pref_cloud_save') ?? true
-      CloudSaveService.setTomlCloudEnabled(activeRoot, cloudEnabled)
+      this.setTomlKey(tomlNow, 'cloud', 'enabled', cloudEnabled ? 'true' : 'false')
+      if (app.isPackaged) {
+        this.setTomlKey(tomlNow, 'log', 'level', '"info"')
+      }
+      CloudSaveService.setTomlCloudEnabled(steamPath, cloudEnabled)
+
+      // 顺手迁移存量旧云存档并固死 CR_STATE_DIR 环境变量
+      try {
+        if (fs.existsSync(path.join(steamPath, 'cloud_redirect')) || fs.existsSync(path.join(steamPath, 'cloud_redirect.log'))) {
+          await CloudSaveService.migrateCrStorage()
+        }
+      } catch {}
+      process.env.CR_STATE_DIR = this.ostDir
+      CloudSaveService.writeCrStateDirEnv(this.ostDir)
 
       // chain pattern alignment in the same transaction (no double-click)
       await PatternSyncService.validatePatterns().catch(() => {})
@@ -267,60 +349,6 @@ export class ModeSwitchService {
     await this.retryOp(() => fs.cpSync(src, dst, { recursive: true }))
   }
 
-  
-  static async getFamilyLibraryMode(): Promise<boolean> {
-    const pref = Db.get<boolean>(this.FAMILY_LIBRARY_MODE_KEY)
-    if (typeof pref === 'boolean') return pref
-
-    try {
-      const det = await SteamDetector.detect()
-      const activeRoot = this.getRootSync(det?.path) || this.ostDir
-      const tomlPath = path.join(activeRoot, 'opensteamtool.toml')
-      if (fs.existsSync(tomlPath)) {
-        const content = fs.readFileSync(tomlPath, 'utf-8')
-        const match = content.match(/family_library_mode\s*=\s*(true|false)/i)
-        if (match) {
-          const val = match[1].toLowerCase() === 'true'
-          Db.set(this.FAMILY_LIBRARY_MODE_KEY, val)
-          return val
-        }
-      }
-    } catch {}
-    return false
-  }
-
-  static async setFamilyLibraryMode(enabled: boolean): Promise<boolean> {
-    Db.set(this.FAMILY_LIBRARY_MODE_KEY, enabled)
-    const valStr = enabled ? 'true' : 'false'
-
-    try {
-      const det = await SteamDetector.detect()
-      const steamPath = det?.path
-      const activeRoot = this.getRootSync(steamPath) || this.ostDir
-
-      const activeToml = path.join(activeRoot, 'opensteamtool.toml')
-      if (fs.existsSync(activeToml)) {
-        this.setTomlKey(activeToml, 'general', 'family_library_mode', valStr)
-      }
-
-      const tcToml = path.join(this.ostDir, 'opensteamtool.toml')
-      if (fs.existsSync(tcToml) && path.resolve(tcToml).toLowerCase() !== path.resolve(activeToml).toLowerCase()) {
-        this.setTomlKey(tcToml, 'general', 'family_library_mode', valStr)
-      }
-
-      if (steamPath) {
-        const steamToml = path.join(steamPath, 'opensteamtool.toml')
-        if (fs.existsSync(steamToml) && path.resolve(steamToml).toLowerCase() !== path.resolve(activeToml).toLowerCase()) {
-          this.setTomlKey(steamToml, 'general', 'family_library_mode', valStr)
-        }
-      }
-      return true
-    } catch (e: any) {
-      console.error('[ModeSwitchService] setFamilyLibraryMode 失败:', e?.message)
-      return false
-    }
-  }
-
   static setTomlKey(tomlPath: string, section: string, key: string, value: string): boolean {
     try {
       if (!fs.existsSync(tomlPath)) return false
@@ -352,18 +380,22 @@ export class ModeSwitchService {
     if (this.busy) return { success: false, mode: current, error: 'BUSY' }
     if (this.deployBusyFn && this.deployBusyFn()) return { success: false, mode: current, error: 'DEPLOY_IN_PROGRESS' }
 
+    // 前置对齐 ost_mode：确保缺包自动拉取(deployTrigger)及活根解析全程对齐目标模式；若中途失败则回滚为 current
+    Db.set(this.MODE_KEY, target)
+
     if (!this.toolsCacheReady()) {
-      if (!this.deployTrigger) return { success: false, mode: current, error: 'DEPLOY_TRIGGER_MISSING' }
+      if (!this.deployTrigger) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'DEPLOY_TRIGGER_MISSING' } }
       const pull = await this.deployTrigger()
-      if (!pull?.success) return { success: false, mode: current, error: 'TOOLS_PULL_FAIL:' + (pull?.error || '') }
-      if (!this.toolsCacheReady()) return { success: false, mode: current, error: 'TOOLS_PULL_INCOMPLETE' }
+      if (!pull?.success) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'TOOLS_PULL_FAIL:' + (pull?.error || '') } }
+      if (!this.toolsCacheReady()) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'TOOLS_PULL_INCOMPLETE' } }
     }
 
     this.busy = true
     try {
       const det = await SteamDetector.detect()
       const steamPath = det.path
-      if (!steamPath) return { success: false, mode: current, error: 'STEAM_NOT_FOUND' }
+        Logger.error('ModeSwitchService', '模式切换失败: 未检测到 Steam 安装路径')
+      if (!steamPath) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'STEAM_NOT_FOUND' } }
 
       await this.ensureSteamDead()
 
@@ -389,7 +421,8 @@ export class ModeSwitchService {
           console.warn('[ModeSwitchService] 模式切换时存量云存档迁移异常:', migErr)
         }
 
-        // 4. 清理旧 .bak 备份（包含 opensteamtool.toml.bak，剔除 CR）
+        // 4. 清理旧 .bak 备份及早期 bin/diversion*.dll 遗产（包含 opensteamtool.toml.bak，剔除 CR）
+        await this.cleanLegacyDiversionFiles(steamPath)
         for (const f of ['OpenSteamTool.dll', 'xinput1_4.dll', 'dwmapi.dll', 'opensteamtool.toml']) {
           try { fs.unlinkSync(path.join(sourceRoot, `${f}.bak`)) } catch { }
         }
@@ -403,32 +436,35 @@ export class ModeSwitchService {
             })
           }
         } else {
-          // 切经典模式时，清理 ostDir 下的旧 toml
-          await this.retryOp(() => {
-            const p = path.join(ostDir, 'opensteamtool.toml')
-            if (fs.existsSync(p)) fs.unlinkSync(p)
-          })
+          // 切经典模式时，清理 ostDir 下的旧核心件与 toml（保留 cloud_redirect）
+          for (const f of ['OpenSteamTool.dll', 'opensteamtool.toml']) {
+            await this.retryOp(() => {
+              const p = path.join(ostDir, f)
+              if (fs.existsSync(p)) fs.unlinkSync(p)
+            })
+          }
         }
 
         // 6. 插件 lua 目录全量覆盖迁移（以当前源端为唯一基准，零记账，杜绝旧文件残留）
         const srcLua = path.join(sourceRoot, 'config', 'lua')
         const dstLua = path.join(destRoot, 'config', 'lua')
 
-        if (fs.existsSync(srcLua)) {
-          // 清理目标端旧残留，确保目标端 100% 与当前源端镜像对齐
-          if (fs.existsSync(dstLua)) {
-            await this.retryOp(() => fs.rmSync(dstLua, { recursive: true, force: true }))
-          }
+        if (!fs.existsSync(dstLua)) {
           fs.mkdirSync(dstLua, { recursive: true })
-          // 全量覆盖拷贝
+        }
+
+        if (fs.existsSync(srcLua)) {
+          // 增量合并拷贝：严禁先 rmSync 清空 dstLua，防止源目录为空或部分缺失时把目标端存量 lua 抹空
           await this.copyDir(srcLua, dstLua)
 
-          // 仅当切换到纯净模式时，按纯净原则清理 Steam 根目录下的残留
+          // 仅当切换到纯净模式、且校验源端所有 lua 文件均已完好落入目标端后，才清理 Steam 根目录残留
           if (target === 'pure') {
-            await this.retryOp(() => fs.rmSync(srcLua, { recursive: true, force: true }))
+            const srcFiles = fs.readdirSync(srcLua).filter(f => f.toLowerCase().endsWith('.lua'))
+            const allCopied = srcFiles.every(f => fs.existsSync(path.join(dstLua, f)))
+            if (allCopied) {
+              await this.retryOp(() => fs.rmSync(srcLua, { recursive: true, force: true }))
+            }
           }
-        } else if (!fs.existsSync(dstLua)) {
-          fs.mkdirSync(dstLua, { recursive: true })
         }
 
         // 彻底铲除历史废弃的 lua_archive 永久底账目录，杜绝已卸载游戏死灰复燃
@@ -455,16 +491,23 @@ export class ModeSwitchService {
           }
         }
       } catch (e: any) {
+        Db.set(this.MODE_KEY, current)
+        Logger.error('ModeSwitchService', '模式切换部署文件失败:', e?.message || e)
         return { success: false, mode: current, error: 'DEPLOY_FAIL:' + (e?.message || e) }
       }
 
-      // 8. 写入分流决策：纯净模式 diversion=true，经典模式 diversion=false
+      // 8. 写入分流决策与配置项：精准落入当前活根 destRoot 的 opensteamtool.toml
       const tomlNow = path.join(destRoot, 'opensteamtool.toml')
       this.setTomlKey(tomlNow, 'diversion', 'enabled', target === 'pure' ? 'true' : 'false')
       const cloudEnabled = Db.get<boolean>('user_pref_cloud_save') ?? true
-      CloudSaveService.setTomlCloudEnabled(destRoot, cloudEnabled)
-      const familyModeTarget = Db.get<boolean>(this.FAMILY_LIBRARY_MODE_KEY) ?? false
-      this.setTomlKey(tomlNow, 'general', 'family_library_mode', familyModeTarget ? 'true' : 'false')
+      this.setTomlKey(tomlNow, 'cloud', 'enabled', cloudEnabled ? 'true' : 'false')
+      if (app.isPackaged) {
+        this.setTomlKey(tomlNow, 'log', 'level', '"info"')
+      }
+      CloudSaveService.setTomlCloudEnabled(steamPath, cloudEnabled)
+
+      // 9. 确保新活根下的 pattern / ipc 特征码同步就绪
+      await PatternSyncService.validatePatterns().catch(() => {})
 
       // 无论切换任何模式，永久将 CR 云存档重定向模块固死在 TC/ost
       process.env.CR_STATE_DIR = ostDir;
@@ -473,6 +516,8 @@ export class ModeSwitchService {
       Db.set(this.MODE_KEY, target)
       return { success: true, mode: target }
     } catch (e: any) {
+      Db.set(this.MODE_KEY, current)
+      Logger.error('ModeSwitchService', '模式切换发生未知未捕获异常:', e?.message || e)
       return { success: false, mode: current, error: e?.message || 'UNKNOWN' }
     } finally {
       this.busy = false

@@ -427,6 +427,22 @@
                 <span>{{ t('settings.coreEnv.titleCore') }}</span>
               </h3>
               <div class="flex items-center gap-3">
+                <!-- 导出日志（3主题适配：anime二次元、minimal极简暗蓝、默认赛博深黑） -->
+                <button
+                  type="button"
+                  @click="handleExportLogs"
+                  :disabled="isExportingLogs"
+                  class="h-9 px-4 rounded-[4px] text-xs font-bold tracking-wider flex items-center border transition-all disabled:opacity-50 whitespace-nowrap gap-2"
+                  :class="currentTheme === 'anime'
+                    ? 'border-[#bce8ff] text-[#4a425a] bg-[#f8faff] hover:bg-pink-50 hover:text-[#ff66b2] hover:border-[#ff9ec7]'
+                    : (currentTheme === 'minimal'
+                      ? 'border-[#00f2ff]/20 text-zinc-300 bg-[#101623]/80 hover:bg-[#00f2ff]/10 hover:text-[#00f2ff] hover:border-[#00f2ff]/40'
+                      : 'border-white/10 text-zinc-400 bg-white/[0.02] hover:bg-[#00f3ff]/[0.04] hover:text-[#00f3ff] hover:border-[#00f3ff]/30')"
+                >
+                  <span v-if="isExportingLogs" class="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                  {{ isExportingLogs ? t('settings.exportLogsRunning') : t('settings.exportLogsBtn') }}
+                </button>
+
                 <!-- 实验功能 -->
                 <button
                   type="button"
@@ -1278,7 +1294,6 @@ const handleSelectSteamPath = async () => {
       steamPath.value = res.path
       steamSource.value = res.source
       await loadGateStatus()
-  loadFamilyLibraryMode()
     } else {
       showNotice(t('errors.validateFailTitle'), tx(res.msg) || t('errors.steamNotFoundExe'), 'error')
     }
@@ -1299,42 +1314,6 @@ const loadGateStatus = async () => {
     }
   } catch (e) {
     console.warn('[Settings] 获取账号闸状态失败:', e)
-  }
-}
-
-
-const familyLibraryModeEnabled = ref(false)
-const isTogglingFamilyMode = ref(false)
-
-const loadFamilyLibraryMode = async () => {
-  try {
-    const res = await window.electron.ost.getFamilyLibraryMode()
-    familyLibraryModeEnabled.value = !!res
-  } catch (e) {
-    console.warn('[Settings] 获取家庭库模式失败:', e)
-  }
-}
-
-const handleToggleFamilyLibraryMode = async () => {
-  if (isTogglingFamilyMode.value) return
-  isTogglingFamilyMode.value = true
-  try {
-    const target = !familyLibraryModeEnabled.value
-    const ok = await window.electron.ost.setFamilyLibraryMode(target)
-    if (ok) {
-      familyLibraryModeEnabled.value = target
-      showNotice(
-        '归属模式已切换',
-        target 
-          ? '已开启【家庭库模式】：显示为来自 Steam 家庭库（避险伪装/分类收拢）' 
-          : '已开启【专属游戏模式】：已消除家庭库标签，与本人专属游戏完全一致',
-        'success'
-      )
-    } else {
-      showNotice('设置失败', '无法写入 opensteamtool.toml 配置，请检查文件权限', 'error')
-    }
-  } finally {
-    isTogglingFamilyMode.value = false
   }
 }
 
@@ -1547,6 +1526,37 @@ const handleMigrateCr = async () => {
     showNotice(t('settings.crMigrateFailTitle'), tx(e?.message) || t('settings.ostModeUnknown'), 'error')
   } finally {
     isRepairingDiagnostics.value = false
+  }
+}
+
+const isExportingLogs = ref(false)
+
+const handleExportLogs = async () => {
+  if (isExportingLogs.value) return
+  isExportingLogs.value = true
+  try {
+    const res = await window.electron.invoke('titan:export-diagnostics')
+    if (res?.success) {
+      showNotice(
+        t('settings.exportLogsDoneTitle'),
+        t('settings.exportLogsDoneDesc'),
+        'success'
+      )
+    } else {
+      showNotice(
+        t('settings.exportLogsFailTitle'),
+        res?.error || t('settings.diagErrMsg'),
+        'error'
+      )
+    }
+  } catch (e: any) {
+    showNotice(
+      t('settings.exportLogsFailTitle'),
+      e?.message || t('settings.diagErrMsg'),
+      'error'
+    )
+  } finally {
+    isExportingLogs.value = false
   }
 }
 

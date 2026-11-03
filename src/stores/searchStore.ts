@@ -21,12 +21,24 @@ export const useSearchStore = defineStore('search', () => {
     direct: Record<string, { data: any[]; expires: number }>
   }>({ protocol: {}, direct: {} })
 
+  let isRadarInitializing = false
   const initRadar = async () => {
+    if (isRadarInitializing) return
+    isRadarInitializing = true
     try {
-      const rules = await window.electron.invoke('sys:get-config', 'radar_denuvo_rules')
-      if (rules?.red) radarRules.value = rules
+      let rules = await window.electron.invoke('sys:get-config', 'radar_denuvo_rules')
+      if (typeof rules === 'string') {
+        try { rules = JSON.parse(rules) } catch {}
+      }
+      if (rules && typeof rules === 'object') {
+        const redArr = Array.isArray(rules.red) ? rules.red.map((x: any) => String(x).trim()).filter(Boolean) : []
+        const yellowArr = Array.isArray(rules.yellow) ? rules.yellow.map((x: any) => String(x).trim()).filter(Boolean) : []
+        radarRules.value = { red: redArr, yellow: yellowArr }
+      }
     } catch (e) {
       console.error('[SearchStore] 无法加载雷达规则:', e)
+    } finally {
+      isRadarInitializing = false
     }
   }
 
@@ -127,9 +139,21 @@ export const useSearchStore = defineStore('search', () => {
   }
 
   const checkRadarStatus = (appIdOrId: string | number): 'red' | 'yellow' | 'safe' => {
-    const cleanId = String(appIdOrId).replace(/^(steam_gate_|titan_protocol_)/, '')
-    if (radarRules.value.red.includes(cleanId)) return 'red'
-    if (radarRules.value.yellow.includes(cleanId)) return 'yellow'
+    if (!appIdOrId) return 'safe'
+    const rawClean = String(appIdOrId).replace(/^(steam_gate_|titan_protocol_|game_|patch_)/, '').trim()
+    const m = rawClean.match(/(\d{3,10})/)
+    const cleanId = m ? m[1] : rawClean
+
+    if (radarRules.value.red.length === 0 && radarRules.value.yellow.length === 0) {
+      initRadar().catch(() => {})
+    }
+
+    const redList = radarRules.value.red.map(String)
+    const yellowList = radarRules.value.yellow.map(String)
+    const fallbackYellow = ['2698940', '33230', '801800', '3483510', '1912410', '1774580', '4570720', '953580', '2161700', '2842040', '1971870', '287700', '2751000', '271590', '3240220', '4356430', '4855450']
+
+    if (redList.includes(cleanId)) return 'red'
+    if (yellowList.includes(cleanId) || fallbackYellow.includes(cleanId)) return 'yellow'
     return 'safe'
   }
 

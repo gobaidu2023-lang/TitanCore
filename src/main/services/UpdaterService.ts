@@ -159,6 +159,11 @@ export class UpdaterService {
 
     ipcMain.removeHandler('app:execute-update')
     ipcMain.handle('app:execute-update', async () => {
+      // 防变砖前置校验：更新状态必须处于就绪，且解压产物必须真实非空
+      if (!this.updateState.ready) {
+        console.error('[UpdaterService] 拦截执行更新: 更新包尚未就绪')
+        return { success: false, msg: 'ERR_UPDATE_NOT_READY' }
+      }
       const installDir = path.dirname(app.getPath('exe'))
       const updaterExe = this.ensureUpdaterBinary()
       const tmpDir = path.join(app.getPath('userData'), 'update')
@@ -167,6 +172,11 @@ export class UpdaterService {
       if (!fs.existsSync(updaterExe)) {
         console.error('[UpdaterService] 执行更新失败: 找不到 TitanUpdater.exe')
         return { success: false, msg: 'ERR_UPDATER_NOT_FOUND' }
+      }
+
+      if (!fs.existsSync(extractDir) || fs.readdirSync(extractDir).length === 0) {
+        console.error('[UpdaterService] 拦截执行更新: 解压目标目录为空，拒绝破坏性覆盖')
+        return { success: false, msg: 'ERR_EXTRACTED_PAYLOAD_EMPTY' }
       }
 
       // 拉起外部更新器并解耦运行
@@ -217,6 +227,11 @@ export class UpdaterService {
 
       // 3. 统一解压服务
       await ArchiveService.extract(titancoreZipPath, extractDir)
+
+      // 防变砖校验：解压目录必须存在且有实体文件释放
+      if (!fs.existsSync(extractDir) || fs.readdirSync(extractDir).length === 0) {
+        throw new Error('ERR_EXTRACTED_PAYLOAD_EMPTY')
+      }
 
       this.updateState = { ready: true, error: null }
 

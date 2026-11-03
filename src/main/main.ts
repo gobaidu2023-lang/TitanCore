@@ -1,23 +1,16 @@
 import { app, BrowserWindow, screen, session, ipcMain, desktopCapturer, shell, protocol, Tray, Menu, nativeImage } from 'electron'
 import path from 'path'
+import crypto from 'crypto'
 import fs from 'fs/promises'
 import fsSync from 'fs'
 import { Db } from './db'
 import { GatewayService } from './services/GatewayService'
 import { initCore } from './services/core'
 import { SteamLaunchService } from './services/SteamLaunchService'
+import { Logger } from './utils/logger'
 import axios from 'axios'
 
 const isDev = !app.isPackaged
-
-// ===== 生产环境日志收口 =====
-if (!isDev) {
-  const noop = () => {}
-  console.log = noop
-  console.debug = noop
-  console.info = noop
-  console.warn = noop
-}
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -26,6 +19,16 @@ let isQuitting = false
 if (isDev) process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true'
 
 app.setPath('userData', path.join(app.getPath('appData'), 'titan-core'))
+
+// ===== 全局即时落盘黑匣子日志系统初始化 =====
+Logger.init()
+Logger.info('Main', 'TitanCore 启动序列开始，环境: isDev =', isDev, 'userData =', app.getPath('userData'))
+
+// ===== 工业级抗死锁与图形渲染稳定加固 (VS Code / Discord 同款实践) =====
+// 禁用 Win11 原生窗口遮挡休眠检测，杜绝无边框窗口在核显/大小核调度下被系统误判休眠导致 16 秒假死
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
+// 开启 GPU 光栅化支持，分担界面矢量与动效渲染压力
+app.commandLine.appendSwitch('enable-gpu-rasterization')
 
 // ===== 单实例锁与唤醒原有窗口 =====
 const gotTheLock = app.requestSingleInstanceLock()
@@ -107,6 +110,13 @@ function createTray() {
         win?.focus()
       }
     },
+    {
+      label: '提取诊断日志',
+      click: () => {
+        const logFile = Logger.getLogFilePath()
+        if (logFile) shell.showItemInFolder(logFile)
+      }
+    },
     { type: 'separator' },
     {
       label: '彻底退出',
@@ -136,6 +146,20 @@ function setupAppProtocolAndNetwork() {
 
   session.defaultSession.webRequest.onBeforeSendHeaders((details, cb) => {
     details.requestHeaders['User-Agent'] = modernUserAgent
+    if (details.url.includes('/titan/cover_gateway.php')) {
+      try {
+        const u = new URL(details.url)
+        const id = u.searchParams.get('id')
+        if (id) {
+          const cleanId = id.replace(/^steam_gate_/, '')
+          const ts = Math.floor(Date.now() / 1000)
+          const secret = 'TitanV15_KimiFinal_2025'
+          const sign = crypto.createHmac('sha256', secret).update(`${cleanId}:${ts}`).digest('hex')
+          details.requestHeaders['X-Titan-Timestamp'] = String(ts)
+          details.requestHeaders['X-Titan-Sign'] = sign
+        }
+      } catch {}
+    }
     cb({ cancel: false, requestHeaders: details.requestHeaders })
   })
 
@@ -235,6 +259,15 @@ function registerGlobalIPC() {
 
   ipcMain.handle('sys:restart-steam', async () => SteamLaunchService.restartSteam())
 
+  ipcMain.handle('sys:open-log-dir', async () => {
+    const logFile = Logger.getLogFilePath()
+    if (logFile && fsSync.existsSync(logFile)) {
+      shell.showItemInFolder(logFile)
+      return { success: true, path: logFile }
+    }
+    return { success: false, path: logFile }
+  })
+
   // 安全修复：添加同源校验与解密降级保护，绝不向第三方泄露令牌
   ipcMain.handle('sys:proxy-post', async (_event, { url, body }: { url: string, body: any }) => {
     try {
@@ -329,6 +362,9 @@ async function createWindow(isFirstLaunch: boolean) {
     }
   })
 
+  // 挂载主窗口诊断探针
+  Logger.attachWindowDiagnostics(win)
+
   let windowShown = false
   const showMainWindow = () => {
     if (windowShown || !win || win.isDestroyed() || isQuitting) return
@@ -368,6 +404,10 @@ async function createWindow(isFirstLaunch: boolean) {
   })
 
   win.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' && input.type === 'keyDown') {
+      win?.webContents.toggleDevTools()
+      return
+    }
     if (
       input.key === 'F5' ||
       ((input.control || input.meta) && input.key.toLowerCase() === 'r')
@@ -480,6 +520,8 @@ function scheduleSilentGarbageCollector() {
 
     // 1. 深度清理 TitanTemp 根下所有任务残卷 (覆盖 deploy_*, game_*, minigame_*, cloudsave, depotkeys, racing)
     cleanDirWithTtl(path.join(dataRoot, 'TitanTemp'))
+    // 1.1 穿透清理 TitanTemp/racing 内部孤儿任务目录 (race_s_*, race_l_*)
+    cleanDirWithTtl(path.join(dataRoot, 'TitanTemp', 'racing'))
 
     // 2. 清理 TitanCache/ost 下历史败者的 .race* 孤儿文件
     cleanDirWithTtl(path.join(dataRoot, 'TitanCache', 'ost'), name => name.includes('.race'))

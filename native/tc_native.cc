@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <cwctype>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "advapi32.lib")
@@ -86,6 +87,14 @@ static std::wstring BuildEnvBlock(const std::wstring& baseDir, const std::wstrin
   return result;
 }
 
+// 判断路径是否处于 Windows 受保护的 Program Files (含 x86) 目录下
+static bool IsProtectedProgramFilesPath(const std::wstring& p) {
+  if (p.empty()) return false;
+  std::wstring lower = p;
+  std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
+  return lower.find(L"program files") != std::wstring::npos;
+}
+
 static LaunchOutcome DoLaunch(const std::wstring& steamExe, const std::wstring& dllPath,
                               const std::wstring& baseDir, const std::wstring& eventName,
                               DWORD timeoutMs) {
@@ -102,17 +111,28 @@ static LaunchOutcome DoLaunch(const std::wstring& steamExe, const std::wstring& 
   STARTUPINFOW si = { sizeof(si) };
   PROCESS_INFORMATION pi = {};
   BOOL created = FALSE;
-  HANDLE hMediumToken = GetMediumIntegrityShellToken();
-  if (hMediumToken) {
-    // 优先尝试以降权普通令牌启动，使 Steam 及其游戏进程免受管理员权限反噬
-    created = CreateProcessWithTokenW(hMediumToken, 0, steamExe.c_str(), NULL,
-                                      CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
-                                      (LPVOID)env.c_str(), workDir.c_str(), &si, &pi);
-    CloseHandle(hMediumToken);
+
+  // 智能降权判断：若 Steam 或 TC(baseDir/dllPath) 任一安装在 Program Files 下，
+  // 必须保留当前管理员权限以保障目录读写畅通；仅当均不在 Program Files 下时才降权启动。
+  const bool skipDeElevation = IsProtectedProgramFilesPath(steamExe) ||
+                               IsProtectedProgramFilesPath(baseDir) ||
+                               IsProtectedProgramFilesPath(dllPath);
+  if (!skipDeElevation) {
+    HANDLE hMediumToken = GetMediumIntegrityShellToken();
+    if (hMediumToken) {
+      // 优先尝试以降权普通令牌启动，使 Steam 及其游戏进程免受管理员权限反噬
+      created = CreateProcessWithTokenW(hMediumToken, 0, steamExe.c_str(), NULL,
+                                        CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
+                                        (LPVOID)env.c_str(), workDir.c_str(), &si, &pi);
+      CloseHandle(hMediumToken);
+    }
   }
 
   if (!created) {
-    // 若降权令牌获取失败，平稳兜底走普通创建
+    // 精简系统防御：若降权尝试失败或服务缺失，彻底复位结构体，零延迟回退至原生创建
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    memset(&pi, 0, sizeof(pi));
     created = CreateProcessW(steamExe.c_str(), NULL, NULL, NULL, FALSE,
                              CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
                              (LPVOID)env.c_str(), workDir.c_str(), &si, &pi);

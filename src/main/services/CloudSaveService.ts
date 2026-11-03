@@ -9,6 +9,7 @@ import { ModeSwitchService } from './ModeSwitchService'
 import { CoverPackService } from './CoverPackService'
 import { Db } from '../db'
 import { ArchiveService } from '../utils/ArchiveService'
+import { Logger } from '../utils/logger'
 
 const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -108,14 +109,17 @@ export class CloudSaveService {
     process.env.CR_STATE_DIR = value
     try {
       const { execFileSync } = require('node:child_process')
-      execFileSync('reg', ['add', 'HKCU\\Environment', '/v', 'CR_STATE_DIR', '/t', 'REG_SZ', '/d', value, '/f'], { timeout: 10000, windowsHide: true })
+      const sysRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows'
+      const regTarget = path.join(sysRoot, 'System32', 'reg.exe')
+      const regExe = fs.existsSync(regTarget) ? regTarget : 'reg'
+      execFileSync(regExe, ['add', 'HKCU\\Environment', '/v', 'CR_STATE_DIR', '/t', 'REG_SZ', '/d', value, '/f'], { timeout: 10000, windowsHide: true })
       
       // 额外对齐登记 TitanCore 软件注册表（0 风险：InstallPath 与 Path 永久保持安装根目录，同时记录 OstDir 供 C++ 探针秒级识别）
       try {
         const tcRoot = path.dirname(value)
-        execFileSync('reg', ['add', 'HKCU\\Software\\TitanCore', '/v', 'InstallPath', '/t', 'REG_SZ', '/d', tcRoot, '/f'], { timeout: 5000, windowsHide: true })
-        execFileSync('reg', ['add', 'HKCU\\Software\\TitanCore', '/v', 'Path', '/t', 'REG_SZ', '/d', tcRoot, '/f'], { timeout: 5000, windowsHide: true })
-        execFileSync('reg', ['add', 'HKCU\\Software\\TitanCore', '/v', 'OstDir', '/t', 'REG_SZ', '/d', value, '/f'], { timeout: 5000, windowsHide: true })
+        execFileSync(regExe, ['add', 'HKCU\\Software\\TitanCore', '/v', 'InstallPath', '/t', 'REG_SZ', '/d', tcRoot, '/f'], { timeout: 5000, windowsHide: true })
+        execFileSync(regExe, ['add', 'HKCU\\Software\\TitanCore', '/v', 'Path', '/t', 'REG_SZ', '/d', tcRoot, '/f'], { timeout: 5000, windowsHide: true })
+        execFileSync(regExe, ['add', 'HKCU\\Software\\TitanCore', '/v', 'OstDir', '/t', 'REG_SZ', '/d', value, '/f'], { timeout: 5000, windowsHide: true })
       } catch {}
 
       this.broadcastEnvChange()
@@ -763,6 +767,7 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
       return { success: false, msg: confirmRes.data?.msg || 'ERR_CLOUD_CONFIRM_FAILED' }
     } catch (e: any) {
       try { fs.unlinkSync(zipPath) } catch {}
+      Logger.error('CloudSaveService', '云存档上传失败:', { accountId, appId, gameName, error: e?.message || e })
       return { success: false, msg: e.response?.data?.msg || e.message || 'ERR_NETWORK_ERROR' }
     }
   }
@@ -883,6 +888,7 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
         }
       } catch {}
       try { if (fs.existsSync(stageDir)) fs.rmSync(stageDir, { recursive: true, force: true }) } catch {}
+      Logger.error('CloudSaveService', '云存档下载恢复失败:', { accountId, appId, error: e?.message || e })
       return { success: false, msg: e.message || 'ERR_CLOUD_RESTORE_FAILED' }
     }
   }

@@ -632,7 +632,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, markRaw, watch } from 'vue';
+import { ref, onMounted, onUnmounted, markRaw, watch, defineAsyncComponent } from 'vue';
 import { usePlayerStore } from '../stores/playerStore';
 import { useTelemetryStore } from '../stores/telemetryStore';
 import { useMiniGameStore } from '../stores/miniGameStore';

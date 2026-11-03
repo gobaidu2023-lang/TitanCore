@@ -65,7 +65,7 @@ export class TitanProtocol {
         const results: DiagnosticItem[] = []
         
         // 存量自愈：旧时代 dwmapi 劫持已废弃，若 Steam 根残留则静默清理
-        for (const deadFile of ['dwmapi.dll', 'dwmapi.dll.bak']) {
+        for (const deadFile of ['dwmapi.dll', 'dwmapi.dll.bak', path.join('bin', 'diversion.dll'), path.join('bin', 'diversion64.dll')]) {
             const deadPath = path.join(steamPath, deadFile);
             if (fs.existsSync(deadPath)) {
                 try { fs.unlinkSync(deadPath); } catch {}
@@ -82,7 +82,26 @@ export class TitanProtocol {
             const checkDir = d.toLowerCase() === 'cloud_redirect.dll'
                 ? ModeSwitchService.ostDir
                 : ostRoot;
-            return !fs.existsSync(path.join(checkDir, d));
+            const deployedPath = path.join(checkDir, d);
+            if (!fs.existsSync(deployedPath)) return true;
+            if (d.toLowerCase().endsWith('.dll')) {
+                const cachedDll = this.findDllInDir(ModeSwitchService.toolsDir, d);
+                if (cachedDll && fs.existsSync(cachedDll)) {
+                    try {
+                        if (fs.statSync(deployedPath).size !== fs.statSync(cachedDll).size) return true;
+                    } catch { return true; }
+                }
+            }
+            if (d.toLowerCase() === 'opensteamtool.toml') {
+                try {
+                    const tomlContent = fs.readFileSync(deployedPath, 'utf-8');
+                    const divSec = tomlContent.match(/\[diversion\][^\[]*/i);
+                    const enabledMatch = divSec ? divSec[0].match(/enabled\s*=\s*(true|false)/i) : null;
+                    const actualDiv = enabledMatch ? enabledMatch[1].toLowerCase() === 'true' : false;
+                    if (actualDiv !== (ModeSwitchService.getMode() === 'pure')) return true;
+                } catch { return true; }
+            }
+            return false;
         })
         results.push({
             name: 'DIAG_OST_DLL',
@@ -135,7 +154,14 @@ export class TitanProtocol {
 
         // 引擎冲突检测：纯净模式下 Steam 根目录严禁残留 xinput1_4 等劫持文件
         const isPureMode = ModeSwitchService.getMode() === 'pure'
-        const hasEngineConflict = isPureMode && fs.existsSync(path.join(steamPath, 'xinput1_4.dll'))
+        const hasLegacyDiversion = fs.existsSync(path.join(steamPath, 'bin', 'diversion.dll')) || fs.existsSync(path.join(steamPath, 'bin', 'diversion64.dll'))
+        const hasPureRootResidue = isPureMode && (
+            fs.existsSync(path.join(steamPath, 'xinput1_4.dll')) ||
+            fs.existsSync(path.join(steamPath, 'OpenSteamTool.dll')) ||
+            fs.existsSync(path.join(steamPath, 'opensteamtool.toml')) ||
+            fs.existsSync(path.join(ModeSwitchService.ostDir, 'xinput1_4.dll'))
+        )
+        const hasEngineConflict = hasLegacyDiversion || hasPureRootResidue
         results.push({
             name: 'DIAG_ENGINE_CONFLICT',
             ok: !hasEngineConflict,
@@ -175,7 +201,92 @@ export class TitanProtocol {
         return results
     }
 
-    // ================= [ Lua 自动更新开关 ] =================
+    // ================= [ Lua 自动更新开关与黄牌智能分流 ] =================
+
+    // 内置 titan_radar.php 黄牌名单兜底（仅黄牌需默认关闭自动更新保护补丁，红牌与普通游戏绝不越权）
+    private static readonly DEFAULT_YELLOW_APPIDS = new Set<string>([
+        '33230', '801800', '3483510', '1912410', '1774580', '4570720', '953580', '2161700',
+        '2842040', '1971870', '287700', '2751000', '271590', '3240220', '4356430', '4855450',
+        '916440', '3751950', '517630', '3818020', '3764200', '2840770', '3321460', '48190',
+        '201870', '911400', '242050', '277590', '311560', '289650', '368500', '582160',
+        '812140', '3035570', '220240', '233270', '298110', '552520', '371660', '939960',
+        '2369390', '243470', '447040', '2239550', '460930', '260230', '2221920', '2290180',
+        '950050', '393380', '2680010', '3159330', '990080', '2806050', '668580', '2358720',
+        '2668510', '1174180', '1466860', '3489700', '2807960', '1941540', '2215200', '779340',
+        '1693980', '2373990', '3357650', '2322560', '2685620', '2963550', '3167180', '3185890',
+        '3218600', '3282390', '3395300', '3406910', '3412900', '3421840', '3543040', '3831120',
+        '4005300', '4104120'
+    ]);
+
+    // 内存级 Lua 状态高速缓存：以文件 mtimeMs + size 为指纹，3000 个 .lua 重复检测耗时 < 2ms，文件一旦被外部修改立即感知
+    private static luaAutoUpdateCache = new Map<string, { mtimeMs: number; size: number; autoUpdate: boolean }>();
+
+    /**
+     * 判断指定 AppID 是否属于【黄牌】游戏（仅黄牌默认关闭自动更新，红牌及普通游戏默认开启更新）
+     */
+    static isYellowCardGame(appId: string): boolean {
+        const cleanId = String(appId).replace(/^steam_gate_/, '').trim();
+        if (!cleanId) return false;
+        try {
+            const rules = Db.get<any>('radar_denuvo_rules');
+            if (rules && Array.isArray(rules.yellow) && rules.yellow.length > 0) {
+                return rules.yellow.some((id: any) => String(id).trim() === cleanId);
+            }
+        } catch {}
+        return this.DEFAULT_YELLOW_APPIDS.has(cleanId);
+    }
+
+    /**
+     * 实时监测磁盘 .lua 文件的真实自动更新状态（真防呆，摒弃不可信的数据库持久化状态）
+     * - 存在未注释的 setManifestid(...) -> 返回 false（已关闭自动更新 / 版本锁定）
+     * - 所有 setManifestid 均被 -- 注释或无此行 -> 返回 true（已开启自动更新）
+     */
+    static inspectLuaAutoUpdate(steamPath: string, appId: string): boolean {
+        const cleanId = String(appId).replace(/^steam_gate_/, '').trim();
+        if (!/^\d+$/.test(cleanId)) return true;
+        if (!steamPath) return !this.isYellowCardGame(cleanId);
+
+        const pluginDirName = this.PLUGIN_DIR_NAME_OST;
+        const activeLuaPath = path.join(ModeSwitchService.getActiveRoot(steamPath), 'config', pluginDirName, `${cleanId}.lua`);
+        const legacyLuaPath = path.join(steamPath, 'config', pluginDirName, `${cleanId}.lua`);
+
+        let luaPath = '';
+        if (fs.existsSync(activeLuaPath)) {
+            luaPath = activeLuaPath;
+        } else if (fs.existsSync(legacyLuaPath)) {
+            luaPath = legacyLuaPath;
+        } else {
+            return !this.isYellowCardGame(cleanId);
+        }
+
+        try {
+            const stat = fs.statSync(luaPath);
+            const cached = this.luaAutoUpdateCache.get(luaPath);
+            if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+                return cached.autoUpdate;
+            }
+
+            const content = fs.readFileSync(luaPath, 'utf-8');
+            const lines = content.split(/\r?\n/);
+            // 只要存在任何一行未以 -- 注释开头的 setManifestid（大小写不敏感），即代表当前物理锁定了版本（关闭自动更新）
+            let hasActiveManifestLock = false;
+            for (const line of lines) {
+                if (/setmanifestid\s*\(/i.test(line)) {
+                    const trimmed = line.trim();
+                    if (!trimmed.startsWith('--')) {
+                        hasActiveManifestLock = true;
+                        break;
+                    }
+                }
+            }
+
+            const autoUpdate = !hasActiveManifestLock;
+            this.luaAutoUpdateCache.set(luaPath, { mtimeMs: stat.mtimeMs, size: stat.size, autoUpdate });
+            return autoUpdate;
+        } catch {
+            return !this.isYellowCardGame(cleanId);
+        }
+    }
 
     static toggleLuaAutoUpdate(steamPath: string, appId: string, enabled: boolean, engine: 'ost' = 'ost'): boolean {
         const pluginDirName = this.PLUGIN_DIR_NAME_OST;
@@ -201,7 +312,7 @@ export class TitanProtocol {
             const lines = content.split(/\r?\n/);
             
             const processedLines = lines.map(line => {
-                if (line.includes('setManifestid')) {
+                if (/setmanifestid\s*\(/i.test(line)) {
                     const isCommented = line.trim().startsWith('--');
                     if (enabled) {
                         if (!isCommented) return '-- ' + line;
@@ -212,7 +323,7 @@ export class TitanProtocol {
                 return line;
             });
 
-            if (!enabled && !processedLines.some(l => l.includes('setManifestid'))) {
+            if (!enabled && !processedLines.some(l => /setmanifestid\s*\(/i.test(l))) {
                 const lockLines = this.buildManifestLockLines(steamPath, appId);
                 if (lockLines.length === 0) {
                     console.warn(`[TitanProtocol] 无 manifest 数据源，无法锁定: ${appId}`);
@@ -222,6 +333,12 @@ export class TitanProtocol {
             }
 
             fs.writeFileSync(luaPath, processedLines.join('\n'), 'utf-8');
+            try {
+                const stat = fs.statSync(luaPath);
+                this.luaAutoUpdateCache.set(luaPath, { mtimeMs: stat.mtimeMs, size: stat.size, autoUpdate: enabled });
+            } catch {
+                this.luaAutoUpdateCache.delete(luaPath);
+            }
             console.log(`[TitanProtocol] 自动更新已${enabled ? '开启' : '关闭'}: ${appId}.lua`);
             return true;
         } catch (e) {
@@ -313,7 +430,9 @@ export class TitanProtocol {
                 'dwmapi.dll', 'dwmapi.dll.bak',
                 'OpenSteamTool.dll', 'OpenSteamTool.dll.bak',
                 'opensteamtool.toml', 'opensteamtool.toml.bak',
-                'cloud_redirect.log'
+                'cloud_redirect.log',
+                path.join('bin', 'diversion.dll'),
+                path.join('bin', 'diversion64.dll')
             ];
             
             let deletedFiles = 0;
@@ -385,6 +504,8 @@ export class TitanProtocol {
                 }
                 if (fs.existsSync(luaPath)) { try { fs.unlinkSync(luaPath) } catch { } }
                 if (fs.existsSync(legacyLuaPath)) { try { fs.unlinkSync(legacyLuaPath) } catch { } }
+                const pureLuaPath = path.join(ModeSwitchService.ostDir, 'config', pluginDirName, `${appId}.lua`);
+                if (fs.existsSync(pureLuaPath)) { try { fs.unlinkSync(pureLuaPath) } catch { } }
                 this.broadcast(40, `protocol.STATUS_CLEAN_LUA:${appId}`, 'clean');
             }
 
@@ -440,8 +561,8 @@ export class TitanProtocol {
         // 关键时机：记录部署前 Steam 是否已在运行（判断是否错过 OST 挂载时机）
         const isSteamRunningBeforeDeploy = await ModeSwitchService.isSteamAlive();
 
-        // 存量自愈：旧时代 dwmapi 劫持已废弃，部署时检测到则静默清理
-        for (const deadFile of ['dwmapi.dll', 'dwmapi.dll.bak']) {
+        // 存量自愈：旧时代 dwmapi 劫持与早期 bin/diversion*.dll 影子克隆已废弃，部署时检测到则静默清理
+        for (const deadFile of ['dwmapi.dll', 'dwmapi.dll.bak', path.join('bin', 'diversion.dll'), path.join('bin', 'diversion64.dll')]) {
             const deadPath = path.join(steamPath, deadFile);
             if (fs.existsSync(deadPath)) {
                 try { fs.unlinkSync(deadPath); } catch {}
@@ -587,7 +708,6 @@ export class TitanProtocol {
 
             this.cleanupSync(taskDir);
             this.broadcast(100, 'protocol.STATUS_DEPLOY_DONE', 'done');
-            DepotKeyService.applyToDeploy(steamPath, config.app_id, engine); 
             return { success: true, msg: 'DEPLOY_OK', path: steamPath, needRestartSteam: false };
 
         } catch (e: any) {
@@ -615,11 +735,20 @@ export class TitanProtocol {
     private static checkEnvironment(steamPath: string, targetDlls: string[], pluginDirName: string, engine: 'ost' = 'ost', expectedVersion?: number): boolean {
         if (!fs.existsSync(path.join(ModeSwitchService.getActiveRoot(steamPath), 'config', pluginDirName))) return false;
         if (!targetDlls || targetDlls.length === 0) return false;
+        const toolsDir = ModeSwitchService.toolsDir;
         for (const dll of targetDlls) {
             const checkDir = dll.toLowerCase() === 'cloud_redirect.dll'
                 ? ModeSwitchService.ostDir
                 : ModeSwitchService.getActiveRoot(steamPath);
-            if (!fs.existsSync(path.join(checkDir, dll))) return false;
+            const deployedDll = path.join(checkDir, dll);
+            if (!fs.existsSync(deployedDll)) return false;
+            // 校验已部署 DLL 与本地 tools 最新包尺寸是否一致，不一致则判定需要补覆盖更新
+            const cachedDll = this.findDllInDir(toolsDir, dll);
+            if (cachedDll && fs.existsSync(cachedDll)) {
+                try {
+                    if (fs.statSync(deployedDll).size !== fs.statSync(cachedDll).size) return false;
+                } catch { return false; }
+            }
         }
         if (!fs.existsSync(ModeSwitchService.getActiveTomlPath(steamPath))) return false;
 
@@ -759,9 +888,47 @@ export class TitanProtocol {
                 if (fs.statSync(filePath).isDirectory()) {
                     await walkLua(filePath);
                 } else if (file.endsWith('.lua')) {
+                    const targetLuaPath = path.join(pluginDir, file);
+                    const fileAppId = path.basename(file, '.lua');
+                    const targetAppId = (appId && /^\d+$/.test(appId)) ? appId : fileAppId;
+
+                    // ① 从临时解压文件读取原始 Lua 内容
+                    let luaContent = fs.readFileSync(filePath, 'utf-8');
+
+                    // ② 智能更新分流：仅【黄牌】游戏锁定版本（保留 setManifestid）；普通与红牌游戏默认开启更新（注释 setManifestid）
+                    const isYellow = this.isYellowCardGame(targetAppId);
+                    if (!isYellow) {
+                        const lines = luaContent.split(/\r?\n/);
+                        luaContent = lines.map(line => {
+                            if (/setmanifestid\s*\(/i.test(line)) {
+                                const trimmed = line.trim();
+                                if (!trimmed.startsWith('--')) {
+                                    return '-- ' + line;
+                                }
+                            }
+                            return line;
+                        }).join('\n');
+                    }
+
+                    // ③ 联动 DepotKey 密钥库静默注入（纯内存操作，单次组装）
+                    luaContent = DepotKeyService.patchLuaContent(targetAppId, luaContent);
+
+                    // ④ 单次原子写入生产目录，彻底杜绝连续覆写引发的 FileWatcher 抖动与状态竞争
                     await this.retryFileOpAsync(() => {
-                        fs.copyFileSync(filePath, path.join(pluginDir, file));
+                        fs.writeFileSync(targetLuaPath, luaContent, 'utf-8');
                     });
+
+                    // ⑤ 同步更新内存高速指纹缓存
+                    try {
+                        const stat = fs.statSync(targetLuaPath);
+                        this.luaAutoUpdateCache.set(targetLuaPath, {
+                            mtimeMs: stat.mtimeMs,
+                            size: stat.size,
+                            autoUpdate: !isYellow
+                        });
+                    } catch {
+                        this.luaAutoUpdateCache.delete(targetLuaPath);
+                    }
                 }
             }
         };

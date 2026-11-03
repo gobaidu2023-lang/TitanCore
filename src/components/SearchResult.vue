@@ -210,6 +210,13 @@
     </div>
 
     <!-- 详情弹窗 -->
+    <ShareGameModal 
+      v-if="isShareModalVisible" 
+      :visible="isShareModalVisible" 
+      :item="selectedItem" 
+      @close="isShareModalVisible = false" 
+    />
+
     <GameDetailModal 
       v-if="isDetailVisible" 
       :visible="isDetailVisible" 
@@ -244,6 +251,7 @@ import { t } from '../i18n'
 import { tcToast } from '../utils/tcToast'
 import GameCard from './GameCard.vue'
 import GameDetailModal from './GameDetailModal.vue'
+import ShareGameModal from './modals/ShareGameModal.vue'
 import { useTheme } from '../composables/useTheme'
 
 const { currentTheme } = useTheme()
@@ -254,6 +262,7 @@ const isExiting = ref(false)
 let exitTimer: ReturnType<typeof setTimeout> | null = null
 
 const isDetailVisible = ref(false)
+const isShareModalVisible = ref(false)
 const selectedItem = ref<any>(null)
 
 const parseTags = (tags: string | undefined) => (tags || '').split(',').filter(Boolean)
@@ -325,6 +334,11 @@ const handleCardAction = async (item: any) => {
       console.error('[Search] 合集加载失败:', e)
     }
   } else {
+    if (item.type === 'sharegame') {
+      selectedItem.value = item
+      isShareModalVisible.value = true
+      return
+    }
     selectedItem.value = item
     isDetailVisible.value = true
   }

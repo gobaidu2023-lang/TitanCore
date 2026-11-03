@@ -55,6 +55,26 @@
             ></span>
           </button>
         </div>
+        <!-- 游戏快捷启动 -->
+        <div class="p-4 rounded-lg border flex items-center justify-between transition-colors" :class="cardClass">
+          <span class="text-sm font-bold" :class="cardTextClass">⚡ {{ t('settings.exp.gameFastLaunch') }}</span>
+          <button 
+            type="button" 
+            role="switch" 
+            :aria-checked="prefEnableGameFastLaunch" 
+            @click="toggle('pref_enable_game_fast_launch')"
+            class="w-10 h-[22px] rounded-full transition-colors relative cursor-pointer"
+            :class="prefEnableGameFastLaunch ? switchActiveClass : switchInactiveClass"
+          >
+            <span 
+              class="absolute top-[3px] w-4 h-4 rounded-full transition-all" 
+              :class="[
+                prefEnableGameFastLaunch ? 'left-[21px]' : 'left-[3px]',
+                currentTheme === 'anime' ? 'bg-white' : 'bg-black'
+              ]"
+            ></span>
+          </button>
+        </div>
       </div>
 
       <!-- fix50: 工具箱(注册表驱动,后续工具零改动本模态框) -->
@@ -76,6 +96,7 @@ import ToolCard from './ToolCard.vue'
 import { TOOLS } from './toolRegistry'
 import { t } from '../../i18n'
 import { useTheme } from '../../composables/useTheme'
+import { useLibraryStore } from '../../stores/libraryStore'
 
 defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ (e: 'update:visible', v: boolean): void; (e: 'close'): void }>()
@@ -137,8 +158,10 @@ const switchInactiveClass = computed(() => {
   return 'bg-white/10'
 })
 
+const libraryStore = useLibraryStore()
 const prefEnableOnlineLaunch = ref(false)
 const prefEnableLuaImport = ref(false)
+const prefEnableGameFastLaunch = computed(() => libraryStore.prefEnableGameFastLaunch)
 
 async function loadPrefs() {
   try {
@@ -148,6 +171,7 @@ async function loadPrefs() {
     ])
     prefEnableOnlineLaunch.value = !!o
     prefEnableLuaImport.value = !!l
+    await libraryStore.loadGameFastLaunchPref()
   } catch { /* 读取失败按默认关 */ }
 }
 
@@ -155,6 +179,10 @@ async function toggle(key: string) {
   let next = false
   if (key === 'pref_enable_online_launch') next = prefEnableOnlineLaunch.value = !prefEnableOnlineLaunch.value
   else if (key === 'pref_enable_lua_import') next = prefEnableLuaImport.value = !prefEnableLuaImport.value
+  else if (key === 'pref_enable_game_fast_launch') {
+    await libraryStore.setGameFastLaunchPref(!libraryStore.prefEnableGameFastLaunch)
+    return
+  }
   try { await window.electron.invoke('sys:set-config', key, next) } catch { /* 持久化失败仅影响重启后 */ }
 }
 

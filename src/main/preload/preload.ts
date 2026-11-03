@@ -97,9 +97,7 @@ contextBridge.exposeInMainWorld('electron', {
     switchMode: (target: 'pure' | 'classic') => ipcRenderer.invoke('ost:switch-mode', target),
     launchSteam: () => ipcRenderer.invoke('ost:launch-steam'),
     launchSteamNative: () => ipcRenderer.invoke('ost:launch-steam-native'),
-    scanAntiCheatGames: () => ipcRenderer.invoke('ost:scan-anticheat-games'),
-    getFamilyLibraryMode: () => ipcRenderer.invoke('ost:get-family-library-mode'),
-    setFamilyLibraryMode: (enabled: boolean) => ipcRenderer.invoke('ost:set-family-library-mode', enabled)
+    scanAntiCheatGames: () => ipcRenderer.invoke('ost:scan-anticheat-games')
   },
   invoke: (channel: string, ...args: any[]) => {
     if (!isAllowedInvoke(channel)) {

@@ -1,7 +1,8 @@
 // 文件路径: \src\main\services\core.ts
 import { ipcMain, BrowserWindow, shell, dialog, app, protocol, net } from 'electron'
 import fs from 'node:fs'
-import { spawn } from 'node:child_process'
+import { spawn, execFile } from 'node:child_process'
+import util from 'node:util'
 import { Readable } from 'stream'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -28,6 +29,8 @@ import { ModeSwitchService } from './ModeSwitchService'
 import { SteamLaunchService } from './SteamLaunchService'
 import { CloudSaveService, registerCloudSaveService } from './CloudSaveService'
 import { ToolService, registerToolService } from './ToolService'
+import { DiagnosticExportService } from './DiagnosticExportService'
+import { ShareGateService } from './ShareGateService'
 
 // 进程保活：杜绝 dev 调试时因微小未捕获异步异常导致闪退
 process.on('uncaughtException', (err) => {
@@ -70,7 +73,7 @@ const decodeKey = (key: string) => {
     }
   }
   return key
-}''
+}
 
 export const getNodeUrl = (nodeId: string) => decodeKey((activeNodeUrls?.[nodeId] || DEFAULT_NODES[nodeId]) ?? '')
 
@@ -136,6 +139,7 @@ async function doConnect(nodeId: string) {
 // Happy Eyeballs: in-memory staggered ladder probing (session-only, never persists selectedNode)
 export const autoConnect = async () => {
   const saved = Db.get<{ selectedNode: string; nodes?: Record<string, string> }>('titan_nodes')
+  console.log('[NET:AutoConnect] 启动自动连接, 读取本地保存节点状态:', JSON.stringify(saved))
   activeNodeUrls = saved?.nodes || null
 
   // 0. one-time legacy normalize: 借助 titan_nodes_v2_migrated 闸门确保只执行一次存量清洗，
@@ -168,13 +172,26 @@ export const autoConnect = async () => {
 
   const attemptConnect = async (nodeId: string): Promise<{ nodeId: string; seed: any }> => {
     const url = getNodeUrl(nodeId)
-    if (!url) throw new Error('ERR_EMPTY_URL')
-    const res = await titanFetch(`${url}?t=${Date.now()}`, { signal, timeout: 6000 })
-    if (!res.ok) throw new Error(`HTTP_${res.status}`)
-    const seed = await res.json()
-    if (!seed || typeof seed !== 'object') throw new Error('ERR_INVALID_SEED')
-
-    return { nodeId, seed }
+    console.log(`[NET:Probe] 开始探测节点 [${nodeId}], 目标URL: ${url}`)
+    if (!url) {
+      console.warn(`[NET:Probe] 节点 [${nodeId}] 解析URL为空!`)
+      throw new Error('ERR_EMPTY_URL')
+    }
+    const startTime = Date.now()
+    try {
+      const res = await titanFetch(`${url}?t=${Date.now()}`, { signal, timeout: 6000 })
+      const elapsed = Date.now() - startTime
+      console.log(`[NET:Probe] 节点 [${nodeId}] HTTP响应: 状态码=${res.status}, 耗时=${elapsed}ms`)
+      if (!res.ok) throw new Error(`HTTP_${res.status}`)
+      const seed = await res.json()
+      if (!seed || typeof seed !== 'object') throw new Error('ERR_INVALID_SEED')
+      console.log(`[NET:Probe] 节点 [${nodeId}] 数据校验通过`)
+      return { nodeId, seed }
+    } catch (err: any) {
+      const elapsed = Date.now() - startTime
+      console.warn(`[NET:Probe] 节点 [${nodeId}] 探测失败(耗时${elapsed}ms): ${err?.message || err}`)
+      throw err
+    }
   }
 
   const racePromise = new Promise<{ nodeId: string; seed: any }>((resolve, reject) => {
@@ -250,6 +267,14 @@ async function requestBase64<T>(endpoint: string, body: object): Promise<{ data:
     })
 
     if (!res.ok) {
+      if (res.status === 400) {
+        try {
+          const errJson = await res.json()
+          if (errJson?.msg && typeof errJson.msg === 'string') {
+            return { data: null, err: errJson.msg }
+          }
+        } catch {}
+      }
       if (res.status === 401) return { data: null, err: 'ERR_INVALID_CREDENTIALS' }
       if (res.status === 409) return { data: null, err: 'ERR_IDENTITY_OCCUPIED' }
       if (res.status === 429) return { data: null, err: 'ERR_TOO_MANY_REQUESTS' }
@@ -441,11 +466,16 @@ async function fetchSecureLinkDirect(resourceId: string, sUrl: string): Promise<
       body: JSON.stringify({ action: 'fetch_secure_link', resource_id: resourceId })
     })
 
-    if (res.status === 429) return { success: false, msg: 'QUOTA_EXHAUSTED' }
-    if (!res.ok) return { success: false, msg: `ERR_REQUEST:${res.status}` }
+    let json: { code?: number; msg?: string; data?: { data?: string } | string } | null = null
+    try {
+      json = await res.json() as any
+    } catch {}
 
-    const json = await res.json() as { code?: number; msg?: string; data?: { data?: string } | string }
-    if (json.code !== 200) return { success: false, msg: json.msg || 'errors.deployNoManifest' }
+    if (res.status === 429 || json?.code === 429) return { success: false, msg: json?.msg || 'QUOTA_EXHAUSTED' }
+    if (!res.ok) return { success: false, msg: json?.msg || `ERR_REQUEST:${res.status}` }
+
+
+    if (!json || json.code !== 200) return { success: false, msg: json?.msg || 'errors.deployNoManifest' }
 
     const hexPayload = typeof json.data === 'object' ? json.data?.data : json.data
     if (!hexPayload) return { success: false, msg: 'ERR_SERVER_RESPONSE' }
@@ -560,11 +590,14 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
       if (url.hostname === 'cover') {
         const coverPath = CoverPackService.resolveLocalCover(id)
         if (coverPath) return net.fetch(pathToFileURL(coverPath).href)
+        // 本地未命中：后台异步向元数据网关要图落盘，绝不阻塞前台响应
+        CoverPackService.fetchAndCacheCover(id).catch(() => {})
         return new Response('Not Found', { status: 404 })
       }
 
       if (url.hostname === 'steam') {
-        const normalizedId = id.replace(/^steam_gate_/, '')
+        const numMatch = id.match(/\d+/)
+        const normalizedId = numMatch ? numMatch[0] : id.replace(/^steam_gate_/, '')
         if (!/^\d+$/.test(normalizedId)) return new Response('Forbidden', { status: 403 })
         const detectRes = await SteamDetector.detect()
         if (!detectRes?.path) return new Response('Not Found', { status: 404 })
@@ -594,6 +627,7 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
 
   ipcMain.removeHandler('sys:client-ready')
   ipcMain.handle('sys:client-ready', async () => {
+    console.log('[LifeCycle] 收到前端就绪信号 (sys:client-ready), 准备触发 ui-ready 并启动后台连接')
     // 渲染进程 Vue 树与 BootSplash 遮罩已彻底渲染完毕，安全通知主窗口
     mainWindowRef?.emit('titan:ui-ready')
 
@@ -606,7 +640,6 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     autoConnect().then(() => {
       const sUrl = Db.get<any>('app_seed_config')?.serverUrl || serverUrl
       if (sUrl) {
-        CoverPackService.syncPacks(`${sUrl}/titan/cover_packs.json`).catch(() => {})
         SyncManager.startSync({ force: firstLaunch }).catch(() => {})
       }
     }).catch((err: any) => {
@@ -803,6 +836,11 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     return res
   })
 
+  ipcMain.removeHandler('sys:sharegate')
+  ipcMain.handle('sys:sharegate', async (_e, payload) => {
+    return ShareGateService.handleIpc(payload)
+  })
+
   ipcMain.removeHandler('sys:batch-deploy-meta')
   ipcMain.handle('sys:batch-deploy-meta', async (_e, appIds: string[]) => {
     const sUrl = Db.get<any>('app_seed_config')?.serverUrl || serverUrl
@@ -816,9 +854,9 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
         body: JSON.stringify({ action: 'batch_deploy_meta', app_ids: appIds })
       })
 
-      if (!res.ok) return { success: false, msg: `ERR_REQUEST:${res.status}` }
+      if (!res.ok) return { success: false, msg: json?.msg || `ERR_REQUEST:${res.status}` }
 
-      const json = await res.json() as { code?: number; msg?: string; data?: { data?: string } | string }
+  
       if (json.code !== 200) return { success: false, msg: json.msg || 'ERR_GATEWAY_REJECTED' }
 
       const hexPayload = typeof json.data === 'object' ? json.data?.data : json.data
@@ -935,6 +973,10 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
       expected_engine_version: expectedEngineVersion
     }
     const deployResult = await TitanProtocol.deploy(detectRes.path, protocolConfig, engine as 'ost' | 'st')
+    if (deployResult.success) {
+      const liveAutoUpdate = TitanProtocol.inspectLuaAutoUpdate(detectRes.path, realSteamAppId)
+      LibraryService.toggleAutoUpdate(`steam_gate_${realSteamAppId}`, liveAutoUpdate)
+    }
 
     return deployResult
   })
@@ -963,7 +1005,8 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
 
   ipcMain.removeHandler('sys:get-user-library')
   ipcMain.handle('sys:get-user-library', async () => {
-    return LibraryService.getLibrary()
+    const steamPath = SteamDetector.lastDetectedPath || (await SteamDetector.detect())?.path || ''
+    return LibraryService.getLibrary(steamPath)
   })
 
   ipcMain.removeHandler('sys:remove-user-library')
@@ -997,14 +1040,17 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     }
   })
 
+  // 纯净原生极速拉起：0毫秒IO、零误报、交由 Steam 原生调度决策
   ipcMain.removeHandler('titan:launch-game')
   ipcMain.handle('titan:launch-game', async (_e, appId: string) => {
-    if (!/^\d+$/.test(appId)) return { success: false, msg: 'ERR_INVALID_APPID' }
+    const cleanAppId = String(appId).replace(/^steam_gate_/, '').trim()
+    if (!/^\d+$/.test(cleanAppId)) return { success: false, msg: 'ERR_INVALID_APPID' }
+
     try {
-      await shell.openExternal(`steam://run/${appId}//-onlinefix`)
+      await shell.openExternal(`steam://run/${cleanAppId}`)
       return { success: true, msg: 'LAUNCH_OK' }
-    } catch {
-      return { success: false, msg: 'ERR_LAUNCH_FAILED' }
+    } catch (e: any) {
+      return { success: false, msg: e?.message || 'ERR_LAUNCH_FAILED' }
     }
   })
 
@@ -1049,6 +1095,12 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     }
 
     return { success: true, data: filtered }
+  })
+
+  // ===================== 一键导出全量诊断日志 =====================
+  ipcMain.removeHandler('titan:export-diagnostics')
+  ipcMain.handle('titan:export-diagnostics', async () => {
+    return await DiagnosticExportService.export()
   })
 
   ipcMain.removeHandler('sys:push-telemetry')
@@ -1251,19 +1303,18 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     const uid = Db.getEncrypted<any>('auth_ticket')?.userId
     if (!uid) return { success: false, msg: 'ERR_LOGIN_REQUIRED' }
 
+    const detectRes = await SteamDetector.detect()
+    if (!detectRes?.path) return { success: false, msg: 'ERR_DEPLOY_NO_STEAM' }
+
+    const engine = 'ost' as const
+    const appId = resourceId.replace(/^steam_gate_/, '')
+    if (!/^\d+$/.test(appId)) return { success: false, msg: 'ERR_INVALID_APPID' }
+
+    const luaOk = TitanProtocol.toggleLuaAutoUpdate(detectRes.path, appId, autoUpdate, engine)
+    if (!luaOk) return { success: false, msg: 'library.batch.toggleUpdateFailed' }
+
     const dbRes = LibraryService.toggleAutoUpdate(resourceId, autoUpdate)
     if (!dbRes.success) return dbRes
-
-    const detectRes = await SteamDetector.detect()
-    if (detectRes?.path) {
-      const engine = 'ost' as const
-      const appId = resourceId.replace(/^steam_gate_/, '')
-      if (/^\d+$/.test(appId)) {
-        TitanProtocol.toggleLuaAutoUpdate(detectRes.path, appId, autoUpdate, engine as 'ost' | 'st')
-      }
-    }
-
-    safeSend('titan:library-updated', { action: 'updated', resourceId })
 
     return { success: true }
   })

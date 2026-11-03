@@ -39,6 +39,47 @@ const inferType = (id: string, rawType: string): LibraryItem['type'] => {
 
 export const useLibraryStore = defineStore('library', () => {
   const items = shallowRef<LibraryItem[]>([])
+  const runningAppIds = ref<Set<string>>(new Set())
+
+  const setAppRunning = (appId: string | number, running = true) => {
+    const cleanId = String(appId).replace(/^steam_gate_/, '').trim()
+    if (running) {
+      runningAppIds.value.add(cleanId)
+    } else {
+      runningAppIds.value.delete(cleanId)
+    }
+  }
+
+  const isAppRunning = (appId: string | number) => {
+    const cleanId = String(appId).replace(/^steam_gate_/, '').trim()
+    return runningAppIds.value.has(cleanId)
+  }
+
+  // 实验功能：游戏快捷启动开关（统一命名：pref_enable_game_fast_launch）
+  const prefEnableGameFastLaunch = ref(false)
+
+  const loadGameFastLaunchPref = async () => {
+    try {
+      const v = await window.electron.invoke('sys:get-config', 'pref_enable_game_fast_launch')
+      if (v !== undefined && v !== null) {
+        prefEnableGameFastLaunch.value = !!v
+      } else {
+        const oldV = await window.electron.invoke('sys:get-config', 'pref_enable_card_launch')
+        prefEnableGameFastLaunch.value = !!oldV
+      }
+    } catch {
+      prefEnableGameFastLaunch.value = false
+    }
+  }
+
+  const setGameFastLaunchPref = async (val: boolean) => {
+    prefEnableGameFastLaunch.value = val
+    try {
+      await window.electron.invoke('sys:set-config', 'pref_enable_game_fast_launch', val)
+    } catch { /* 忽略 */ }
+  }
+
+  loadGameFastLaunchPref()
 
   const load = async () => {
     try {
@@ -305,6 +346,14 @@ export const useLibraryStore = defineStore('library', () => {
     removeItem,
     batchDeploy,
     redeployAll,
-    toggleAutoUpdate
+    toggleAutoUpdate,
+    runningAppIds,
+    setAppRunning,
+    isAppRunning,
+    prefEnableGameFastLaunch,
+    loadGameFastLaunchPref,
+    setGameFastLaunchPref,
+    // 兼容别名
+    prefEnableCardLaunch: prefEnableGameFastLaunch
   }
 })

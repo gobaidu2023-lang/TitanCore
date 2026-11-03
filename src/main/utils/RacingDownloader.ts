@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { pipeline } from 'node:stream/promises'
 import axios from 'axios'
 import { app } from 'electron'
 import { Db } from '../db'
@@ -54,13 +55,16 @@ export class RacingDownloader {
       }
     }
 
+    const raceTasks = urls.map((u, i) => raceOne(u, i))
     let winnerTmp = ''
     try {
-      winnerTmp = await Promise.any(urls.map((u, i) => raceOne(u, i)))
+      winnerTmp = await Promise.any(raceTasks)
     } catch {
       throw new Error(`ERR_RACE_ALL_FAILED: ${lastError}`)
     } finally {
       controllers.forEach(c => c.abort())
+      // 关键：等待所有竞速任务分支完全退出，确保各分支流与文件句柄彻底释放
+      await Promise.allSettled(raceTasks)
     }
 
     try {
@@ -72,7 +76,7 @@ export class RacingDownloader {
       fs.renameSync(winnerTmp, options.destPath)
       return options.destPath
     } finally {
-      try { fs.rmSync(raceDir, { recursive: true, force: true }) } catch {}
+      await this.rmWithRetry(raceDir, 3)
     }
   }
 
@@ -169,7 +173,7 @@ export class RacingDownloader {
       for (const gid of gids) {
         await DownloadService.removeTask(gid).catch(() => {})
       }
-      try { fs.rmSync(raceDir, { recursive: true, force: true }) } catch {}
+      await this.rmWithRetry(raceDir, 5)
     }
   }
 
@@ -189,11 +193,15 @@ export class RacingDownloader {
   private static async verifySha256(filePath: string, expected: string): Promise<void> {
     const hash = crypto.createHash('sha256')
     const stream = fs.createReadStream(filePath)
-    await new Promise<void>((resolve, reject) => {
-      stream.on('data', d => hash.update(d))
-      stream.on('end', () => resolve())
-      stream.on('error', reject)
-    })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        stream.on('data', d => hash.update(d))
+        stream.on('end', () => resolve())
+        stream.on('error', reject)
+      })
+    } finally {
+      if (!stream.destroyed) stream.destroy()
+    }
     const actual = hash.digest('hex').toLowerCase()
     if (actual !== expected.toLowerCase().trim()) {
       throw new Error(`ERR_SHA256_MISMATCH: expected ${expected}, got ${actual}`)
@@ -212,12 +220,12 @@ export class RacingDownloader {
       validateStatus: s => s >= 200 && s < 300
     })
     const writer = fs.createWriteStream(dest)
-    await new Promise<void>((resolve, reject) => {
-      writer.on('finish', resolve)
-      writer.on('error', reject)
-      res.data.on('error', reject)
-      res.data.pipe(writer)
-    })
+    try {
+      await pipeline(res.data, writer)
+    } catch (err) {
+      if (!writer.destroyed) writer.destroy()
+      throw err
+    }
   }
 
   private static async downloadDirectStream(url: string, options: RaceOptions): Promise<string> {
@@ -235,7 +243,20 @@ export class RacingDownloader {
       fs.renameSync(tmp, options.destPath)
       return options.destPath
     } finally {
-      if (fs.existsSync(tmp)) try { fs.unlinkSync(tmp) } catch {}
+      if (fs.existsSync(tmp)) await this.rmWithRetry(tmp, 3)
+    }
+  }
+
+  private static async rmWithRetry(target: string, tries = 3): Promise<void> {
+    if (!fs.existsSync(target)) return
+    for (let i = 0; i < tries; i++) {
+      try {
+        fs.rmSync(target, { recursive: true, force: true })
+        return
+      } catch (e) {
+        if (i === tries - 1) break
+        await new Promise(r => setTimeout(r, 200 * Math.pow(2, i)))
+      }
     }
   }
 }

@@ -1,18 +1,16 @@
 // 文件名: src/main/services/CoverPackService.ts
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import axios from 'axios';
 import { app } from 'electron';
 import { Db } from '../db';
-import { ArchiveService } from '../utils/ArchiveService';
 
 export class CoverPackService {
     private static coversDir: string;
-    private static isSyncing = false;
-    private static readonly DOWNLOAD_CONCURRENCY = 3;
-    private static readonly PACK_TIMEOUT = 30000;
-    private static readonly MAX_RETRIES = 2;
     private static readonly COVER_EXTS = ['.webp', '.jpg', '.png'];
+    private static readonly COVER_SECRET = 'TitanV15_KimiFinal_2025';
+    private static pendingFetches = new Set<string>();
 
     public static init() {
         this.coversDir = path.join(Db.getDataRoot(), 'cache', 'covers');
@@ -27,6 +25,8 @@ export class CoverPackService {
         const idsToCheck: string[] = [id];
         const normalized = id.replace(/^steam_gate_/, '');
         if (normalized !== id) idsToCheck.push(normalized);
+        const numMatch = id.match(/\d+/);
+        if (numMatch && !idsToCheck.includes(numMatch[0])) idsToCheck.push(numMatch[0]);
 
         for (const checkId of idsToCheck) {
             for (const ext of this.COVER_EXTS) {
@@ -44,6 +44,8 @@ export class CoverPackService {
         const idsToCheck: string[] = [id];
         const normalized = id.replace(/^steam_gate_/, '');
         if (normalized !== id) idsToCheck.push(normalized);
+        const numMatch = id.match(/\d+/);
+        if (numMatch && !idsToCheck.includes(numMatch[0])) idsToCheck.push(numMatch[0]);
 
         for (const checkId of idsToCheck) {
             for (const ext of this.COVER_EXTS) {
@@ -54,42 +56,120 @@ export class CoverPackService {
         return null;
     }
 
-    // 【新增】解析 Steam 客户端本地缓存的竖版封面路径
+    // 【新增】解析 Steam 客户端本地缓存的竖版封面路径（兼容根目录、SHA1哈希子目录及旧版平铺命名，中文与高清优先）
+
+    // 【核心新增】当本地未命中时，后台异步携带 HMAC 强签名鉴权向元数据服务器要图并静默落盘
+    public static async fetchAndCacheCover(id: string): Promise<boolean> {
+        if (!id) return false;
+        const numMatch = id.match(/\d+/);
+        const normalizedId = numMatch ? numMatch[0] : id.replace(/^steam_gate_/, '');
+        if (!/^\d+$/.test(normalizedId)) return false;
+
+        if (this.pendingFetches.has(normalizedId)) return false;
+        if (!this.coversDir) this.init();
+
+        const existing = this.resolveLocalCover(normalizedId);
+        if (existing) return true;
+
+        this.pendingFetches.add(normalizedId);
+
+        try {
+            const timestamp = Math.floor(Date.now() / 1000);
+            const sign = crypto.createHmac('sha256', this.COVER_SECRET).update(`${normalizedId}:${timestamp}`).digest('hex');
+
+            const serverUrl = Db.get<any>('app_seed_config')?.serverUrl || Db.get<any>('app_settings')?.serverUrl || (process.env.TITAN_NODE_2 || '');
+            const gatewayUrl = `${serverUrl}/titan/cover_gateway.php?id=${normalizedId}`;
+
+            const res = await axios.get(gatewayUrl, {
+                responseType: 'arraybuffer',
+                timeout: 8000,
+                headers: {
+                    'User-Agent': 'TitanCore/3.0',
+                    'X-Titan-Client': 'TitanCore',
+                    'X-Titan-Timestamp': String(timestamp),
+                    'X-Titan-Sign': sign
+                }
+            });
+
+            if (res.status === 200 && res.data && res.data.length > 0) {
+                const contentType = (res.headers['content-type'] as string) || '';
+                const ext = contentType.includes('webp') ? '.webp' : (contentType.includes('png') ? '.png' : '.jpg');
+                const targetPath = path.join(this.coversDir, `${normalizedId}${ext}`);
+                const tempPath = `${targetPath}.tmp.${Date.now()}`;
+
+                await fs.promises.writeFile(tempPath, Buffer.from(res.data));
+                await fs.promises.rename(tempPath, targetPath);
+                return true;
+            }
+            return false;
+        } catch (e: any) {
+            return false;
+        } finally {
+            this.pendingFetches.delete(normalizedId);
+        }
+    }
+
     public static resolveSteamCover(appId: string, steamPath: string): string | null {
-        if (!/^\d+$/.test(appId) || !steamPath) return null;
+        const numMatch = appId.match(/\d+/);
+        const cleanId = numMatch ? numMatch[0] : appId;
+        if (!/^\d+$/.test(cleanId) || !steamPath) return null;
 
-        const appidDir = path.join(steamPath, 'appcache', 'librarycache', appId);
-        if (!fs.existsSync(appidDir)) return null;
+        const libCacheRoot = path.join(steamPath, 'appcache', 'librarycache');
+        const appidDir = path.join(libCacheRoot, cleanId);
 
-        const findVerticalCover = (dir: string): string | null => {
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
-            // 先扫当前目录的文件
-            for (const entry of entries) {
-                if (entry.isFile()) {
-                    const name = entry.name.toLowerCase();
-                    if (name.startsWith('library_600x900') || name.startsWith('library_capsule')) {
-                        return path.join(dir, entry.name);
+        const candidates: string[] = [];
+        const collectVerticalCovers = (dir: string) => {
+            try {
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (entry.isFile()) {
+                        const name = entry.name.toLowerCase();
+                        if (
+                            (name.startsWith('library_600x900') || name.startsWith('library_capsule')) &&
+                            (name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.webp'))
+                        ) {
+                            candidates.push(path.join(dir, entry.name));
+                        }
+                    } else if (entry.isDirectory()) {
+                        collectVerticalCovers(path.join(dir, entry.name));
                     }
                 }
-            }
-            // 再递归进子目录
-            for (const entry of entries) {
-                if (entry.isDirectory()) {
-                    const found = findVerticalCover(path.join(dir, entry.name));
-                    if (found) return found;
-                }
-            }
-            return null;
+            } catch {}
         };
 
-        return findVerticalCover(appidDir);
+        if (fs.existsSync(appidDir)) {
+            collectVerticalCovers(appidDir);
+        }
+
+        if (candidates.length > 0) {
+            const scoreCover = (filePath: string): number => {
+                const n = path.basename(filePath).toLowerCase();
+                let score = 0;
+                if (n.includes('schinese')) score += 100;
+                if (n.startsWith('library_600x900')) score += 50;
+                else if (n.startsWith('library_capsule')) score += 20;
+                if (n.includes('_2x')) score += 5;
+                return score;
+            };
+            candidates.sort((a, b) => scoreCover(b) - scoreCover(a));
+            return candidates[0];
+        }
+
+        for (const suffix of ['_library_600x900_schinese.jpg', '_library_600x900.jpg', '_library_capsule_schinese.jpg', '_library_capsule.jpg']) {
+            const legacyPath = path.join(libCacheRoot, `${appId}${suffix}`);
+            if (fs.existsSync(legacyPath)) return legacyPath;
+        }
+
+        return null;
     }
 
     // 【新增】解析 Steam 客户端本地缓存的横版封面路径（Header）
     public static resolveSteamHeader(appId: string, steamPath: string): string | null {
-        if (!/^\d+$/.test(appId) || !steamPath) return null;
+        const numMatch = appId.match(/\d+/);
+        const cleanId = numMatch ? numMatch[0] : appId;
+        if (!/^\d+$/.test(cleanId) || !steamPath) return null;
 
-        const appidDir = path.join(steamPath, 'appcache', 'librarycache', appId);
+        const appidDir = path.join(steamPath, 'appcache', 'librarycache', cleanId);
         if (!fs.existsSync(appidDir)) return null;
 
         const findHeader = (dir: string): string | null => {
@@ -112,156 +192,5 @@ export class CoverPackService {
         };
 
         return findHeader(appidDir);
-    }
-    // ========== 原有方法一字不动 ==========
-
-    public static async syncPacks(listUrl: string) {
-        if (!this.coversDir) this.init();
-        if (this.isSyncing) return;
-        this.isSyncing = true;
-
-        try {
-            const finalUrl = listUrl.includes('?') ? `${listUrl}&t=${Date.now()}` : `${listUrl}?t=${Date.now()}`;
-            const res = await axios.get(finalUrl, { timeout: 10000, headers: { 'User-Agent': 'TitanCore/2.0' } });
-            
-            let packsRaw = res.data;
-            if (typeof packsRaw === 'string') {
-                try { packsRaw = JSON.parse(packsRaw); } catch (e) { throw new Error('ERR_JSON_PARSE_FAIL'); }
-            }
-            if (packsRaw && typeof packsRaw === 'object' && Array.isArray((packsRaw as any).data)) {
-                packsRaw = (packsRaw as any).data;
-            }
-
-            if (!Array.isArray(packsRaw)) throw new Error('ERR_INVALID_PACK_FORMAT');
-
-            const packs: { id: number, url: string }[] = packsRaw;
-            const history = Db.get<number[]>('downloaded_cover_packs') || [];
-            
-            const newPacks = packs.filter(p => !history.includes(p.id)).sort((a, b) => a.id - b.id);
-            if (newPacks.length === 0) return;
-
-            const successIds: number[] = [];
-
-            const processPack = async (pack: { id: number, url: string }): Promise<boolean> => {
-                const tempFile = path.join(
-                    Db.getDataRoot(), 
-                    'cache', 
-                    `pack_${pack.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.zip`
-                );
-                
-                let retries = this.MAX_RETRIES;
-                while (retries >= 0) {
-                    try {
-                        await this.downloadPack(pack, tempFile);
-                        const ok = await ArchiveService.test(tempFile);
-                        if (!ok) throw new Error('压缩包 CRC 校验失败');
-                        await ArchiveService.extract(tempFile, this.coversDir, { overwrite: true });
-                        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-                        
-                        const currentHistory = Db.get<number[]>('downloaded_cover_packs') || [];
-                        if (!currentHistory.includes(pack.id)) {
-                            Db.set('downloaded_cover_packs', [...currentHistory, pack.id]);
-                        }
-                        
-                        return true;
-                    } catch (e: any) {
-                        if (fs.existsSync(tempFile)) try { fs.unlinkSync(tempFile); } catch {}
-                        
-                        console.warn(`[CoverPackService] Pack ${pack.id} 尝试失败 (${this.MAX_RETRIES - retries + 1}/${this.MAX_RETRIES + 1}):`, e.message);
-                        
-                        if (retries === 0) {
-                            console.error(`[CoverPackService] Pack ${pack.id} 最终失败:`, e.message);
-                            return false;
-                        }
-                        retries--;
-                        await new Promise(r => setTimeout(r, 1000));
-                    }
-                }
-                return false;
-            };
-
-            const worker = async (workerId: number) => {
-                for (let i = workerId; i < newPacks.length; i += this.DOWNLOAD_CONCURRENCY) {
-                    if (await processPack(newPacks[i])) {
-                        successIds.push(newPacks[i].id);
-                    }
-                }
-            };
-
-            const workers: Promise<void>[] = [];
-            for (let i = 0; i < this.DOWNLOAD_CONCURRENCY; i++) {
-                workers.push(worker(i));
-            }
-            await Promise.all(workers);
-
-            if (successIds.length > 0) {
-                const currentHistory = Db.get<number[]>('downloaded_cover_packs') || [];
-                const updatedHistory = Array.from(new Set([...currentHistory, ...successIds]));
-                Db.set('downloaded_cover_packs', updatedHistory);
-                this.cleanupLRU();
-            }
-        } catch (e: any) {
-            console.error('[CoverPackService] syncPacks error:', e.message);
-        } finally {
-            this.isSyncing = false;
-        }
-    }
-
-    private static async downloadPack(pack: { id: number, url: string }, tempFile: string): Promise<void> {
-        const response = await axios({ 
-            url: pack.url, 
-            method: 'GET', 
-            responseType: 'stream', 
-            timeout: this.PACK_TIMEOUT, 
-            headers: { 'User-Agent': 'TitanCore/2.0' } 
-        });
-        
-        const writer = fs.createWriteStream(tempFile);
-        response.data.pipe(writer);
-        
-        return new Promise<void>((resolve, reject) => {
-            let hasError = false;
-            
-            const cleanup = (err?: any) => {
-                if (hasError) return;
-                hasError = true;
-                writer.destroy();
-                if (err) reject(err);
-            };
-            
-            writer.on('error', (err) => cleanup(err));
-            response.data.on('error', (err: any) => cleanup(err));
-            
-            writer.on('close', () => {
-                if (hasError) return;
-                resolve();
-            });
-        });
-    }
-
-    private static async cleanupLRU(): Promise<void> {
-        try {
-            const files = await fs.promises.readdir(this.coversDir);
-            const coverFiles = files.filter(f => f.endsWith('.jpg') || f.endsWith('.png') || f.endsWith('.webp'));
-            if (coverFiles.length <= 1000) return;
-
-            const fileStats = await Promise.all(
-                coverFiles.map(async (f) => {
-                    const filePath = path.join(this.coversDir, f);
-                    try {
-                        const stat = await fs.promises.stat(filePath);
-                        return { path: filePath, mtime: stat.mtimeMs };
-                    } catch {
-                        return { path: filePath, mtime: 0 };
-                    }
-                })
-            );
-
-            fileStats.sort((a, b) => b.mtime - a.mtime);
-            const toDelete = fileStats.slice(1000);
-            for (const file of toDelete) {
-                fs.promises.unlink(file.path).catch(() => {});
-            }
-        } catch (e) {}
     }
 }

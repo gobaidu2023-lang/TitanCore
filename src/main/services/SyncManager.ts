@@ -1,9 +1,8 @@
-﻿// 文件名: src/main/services/SyncManager.ts
+// 文件名: src/main/services/SyncManager.ts
 import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow, app } from 'electron';
 import { Db } from '../db';
-import { CoverPackService } from './CoverPackService';
 import { EventEmitter } from 'events';
 
 export interface BackendResourceItem {
@@ -20,7 +19,7 @@ export class SyncManager {
     private static isSyncing = false;
     private static lastSyncTime = 0;
     private static eventEmitter = new EventEmitter();
-    private static readonly CLIENT_SECRET = process.env.TITAN_CLIENT_SECRET || 'TITAN_COMMUNITY_CLIENT_SECRET';
+    private static readonly CLIENT_SECRET = 'TitanV15_KimiFinal_2025';
 
     public static get isSyncingState(): boolean {
         return this.isSyncing;
@@ -79,15 +78,6 @@ export class SyncManager {
         } catch (e) {}
     }
 
-    private static triggerCoverSync(serverUrl: string): void {
-        try {
-            const coverEndpoints = Db.get<Record<string, string>>('endpoints') || {};
-            const coverPacksPath = coverEndpoints['cover_packs'] || '/titan/cover_packs.json';
-            const coverPacksUrl = coverPacksPath.startsWith('http') ? coverPacksPath : `${serverUrl}${coverPacksPath}`;
-            CoverPackService.syncPacks(coverPacksUrl).catch(() => {});
-        } catch (e) {}
-    }
-
     static async syncRadarRules(): Promise<void> {
         try {
             const serverUrl = Db.get<any>('app_seed_config')?.serverUrl || Db.get<any>('app_settings')?.serverUrl || '';
@@ -121,7 +111,7 @@ export class SyncManager {
         // 【修复TDZ】serverUrl 声明必须在前：round11 的 begin 日志引用它时它尚未声明，
         // 参数求值即抛 ReferenceError，.catch 吞掉异常且 isSyncing 已置 true 导致全局死锁
         const serverUrl = Db.get<any>('app_seed_config')?.serverUrl || Db.get<string>('server_url');
-        console.error(`[SYNC] begin: serverUrl=${!!serverUrl} force=${!!options?.force} localRev=${Db.get<number>('local_revision') || 0} localVer=${Db.get<number>('resource_version') || 0}`);
+        console.log(`[SYNC] begin: serverUrl=${!!serverUrl} force=${!!options?.force} localRev=${Db.get<number>('local_revision') || 0} localVer=${Db.get<number>('resource_version') || 0}`);
 
         if (serverUrl) {
             this.syncRadarRules().catch(() => {});
@@ -145,12 +135,11 @@ export class SyncManager {
                         const localVersion = Db.get<number>('resource_version') || 0;
 
                         if (serverVersion !== localVersion) {
-                            console.error(`[SYNC] resource_version changed: server=${serverVersion} local=${localVersion}, clearing local db`);
+                            console.log(`[SYNC] resource_version changed: server=${serverVersion} local=${localVersion}, clearing local db`);
                             Db.run('DELETE FROM titan_resources');
                             this.clearAllCovers();
                             Db.set('local_revision', 0);
                             Db.set('last_sync_id', '');
-                            Db.set('downloaded_cover_packs', []);
                             Db.set('resource_version', serverVersion);
                         }
                     }
@@ -288,7 +277,7 @@ export class SyncManager {
                     break;
                 }
 
-                console.error(`[SYNC] page ${pageCount}: items=${payloadData.length} rev=${nextRevision} hasMore=${hasMore}`);
+                console.log(`[SYNC] page ${pageCount}: items=${payloadData.length} rev=${nextRevision} hasMore=${hasMore}`);
                 if (payloadData.length === 0) {
                     hasMore = false;
                     break;
@@ -331,7 +320,7 @@ export class SyncManager {
             } while (hasMore);
 
             if (syncAborted) {
-                console.error(`[SYNC] aborted at page ${pageCount} (buffered upsert=${allBatchRows.length} delete=${allDeletedIds.length})`);
+                console.warn(`[SYNC] aborted at page ${pageCount} (buffered upsert=${allBatchRows.length} delete=${allDeletedIds.length})`);
                 if (allDeletedIds.length > 0) {
                     Db.deleteResourcesBatch(allDeletedIds);
                     for (const id of allDeletedIds) {
@@ -346,10 +335,6 @@ export class SyncManager {
                         totalUpsert += allBatchRows.length;
                         Db.checkpoint();
                     }
-                }
-
-                if (allBatchRows.length > 0) {
-                    this.triggerCoverSync(serverUrl);
                 }
 
                 this.emit('sync:complete', { upsert: totalUpsert, delete: totalDelete, changedIds: allChangedIds, partial: true });
@@ -377,11 +362,10 @@ export class SyncManager {
                 totalUpsert += allBatchRows.length;
             }
 
-            console.error(`[SYNC] complete: upsert=${allBatchRows.length} delete=${allDeletedIds.length} rev=${currentRev}`);
+            console.log(`[SYNC] complete: upsert=${allBatchRows.length} delete=${allDeletedIds.length} rev=${currentRev}`);
             Db.checkpoint();
             Db.set('local_revision', currentRev);
             Db.set('last_sync_id', lastSyncId);
-            this.triggerCoverSync(serverUrl);
 
             const wins = BrowserWindow.getAllWindows();
             wins.forEach(win => {

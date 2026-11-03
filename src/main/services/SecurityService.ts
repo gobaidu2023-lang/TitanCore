@@ -1,4 +1,4 @@
-﻿// src/main/services/SecurityService.ts
+// src/main/services/SecurityService.ts
 import { safeStorage } from 'electron';
 import crypto from 'crypto';
 

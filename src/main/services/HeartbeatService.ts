@@ -72,7 +72,12 @@ export class HeartbeatService {
     if (gpuModel === 'Unknown GPU' || gpuModel.toLowerCase().includes('basic')) {
       try {
         const { execSync } = require('child_process')
-        const out = execSync('reg.exe query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}" /s /v DriverDesc', { encoding: 'utf-8', timeout: 2000 })
+        const fs = require('fs')
+        const path = require('path')
+        const sysRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows'
+        const regTarget = path.join(sysRoot, 'System32', 'reg.exe')
+        const regCmd = fs.existsSync(regTarget) ? `"${regTarget}"` : 'reg.exe'
+        const out = execSync(`${regCmd} query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}" /s /v DriverDesc`, { encoding: 'utf-8', timeout: 2000 })
         const lines = out.split('\n').filter((l: string) => l.includes('DriverDesc'))
         const candidateGpus = lines
           .map((l: string) => l.split('REG_SZ')[1]?.trim())
@@ -123,7 +128,7 @@ export class HeartbeatService {
           'Content-Type': 'application/json',
           'X-Titan-Token': this.token
         },
-        timeout: 15000
+        timeout: 8000
       })
 
       const json = res.data
@@ -186,7 +191,7 @@ export class HeartbeatService {
       }
 
       // 阶梯退避重试
-      const delay = this.consecutiveErrors > 5 ? 30000 : 5000
+      const delay = this.consecutiveErrors > 5 ? 30000 : (this.consecutiveErrors > 2 ? 15000 : 8000)
       this.timer = setTimeout(() => this.tick(), delay)
     }
   }

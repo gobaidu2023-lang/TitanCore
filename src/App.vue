@@ -371,6 +371,7 @@ import { useLibraryStore } from './stores/libraryStore'
 import { useTransmissionStore } from './stores/transmissionStore'
 import { useFeedbackStore } from './stores/feedbackStore'
 import { useTelemetryStore } from './stores/telemetryStore'
+import { useSearchStore } from './stores/searchStore'
 import Sidebar from './components/Sidebar.vue'
 import AnimeSidebar from './themes/anime/AnimeSidebar.vue'
 import AnimeTopbar from './themes/anime/AnimeTopbar.vue'
@@ -397,6 +398,7 @@ const libraryStore = useLibraryStore()
 const transmissionStore = useTransmissionStore()
 const feedbackStore = useFeedbackStore()
 const telemetryStore = useTelemetryStore()
+const searchStore = useSearchStore()
 
 const mainContainer = ref<HTMLElement | null>(null)
 const currentView = ref('discovery')
@@ -466,6 +468,7 @@ let unsubSyncComplete: (() => void) | null = null
 let unsubUpdateReady: (() => void) | null = null
 let unsubUpdateError: (() => void) | null = null
 let bootSplashTimer: ReturnType<typeof setTimeout> | null = null
+let bootSplashForceTimer: ReturnType<typeof setTimeout> | null = null
 let welcomeModalTimer: ReturnType<typeof setTimeout> | null = null
 
 const systemStatus = computed(() => {
@@ -820,6 +823,14 @@ const startUpdateCountdown = () => {
 }
 
 onMounted(async () => {
+  searchStore.initRadar().catch(() => {})
+  // 启动屏超时强拆兜底：无论初始化或 IPC 握手是否异常，上限 2500ms 强制移除启动屏，杜绝死锁停留在 "T"
+  bootSplashForceTimer = setTimeout(() => {
+    if (showBootSplash.value) {
+      showBootSplash.value = false
+    }
+  }, 2500)
+
   // 1. 监听置顶（保住侧边栏状态不会漏）
   unsubLoginSuccess = window.electron.on('auth:login-success', async () => {
     // 【架构解耦】严禁在此触发公共库同步！公共库由主进程生命周期单向驱动
@@ -865,14 +876,23 @@ onMounted(async () => {
     if (s && !s.running && s.lastSyncAt) discoveryStore.setSyncPhase('ready')
   }).catch(() => {})
 
-  await initLang()
+  try {
+    await initLang()
+  } catch (err) {
+    console.warn('[App] 语言配置加载降级:', err)
+  }
 
   window.addEventListener('titan-navigate', handleNavigationBroadcast)
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  // 客户端就绪握手（主进程 0ms 返回首发标记）
-  const res = await window.electron.invoke('sys:client-ready')
-  const isFirstLaunch = res?.isFirstLaunch ?? false
+  let isFirstLaunch = false
+  try {
+    // 客户端就绪握手（主进程 0ms 返回首发标记）
+    const res = await window.electron.invoke('sys:client-ready')
+    isFirstLaunch = res?.isFirstLaunch ?? false
+  } catch (err) {
+    console.error('[App] 主进程就绪握手异常，安全降级:', err)
+  }
   isFirstLaunchFlag.value = isFirstLaunch
 
   if (isFirstLaunch) {
@@ -888,7 +908,11 @@ onMounted(async () => {
     // 日常冷启：300ms 动态时钟，极速开屏（告别 ~2.1s 呆滞等待）
     // 【时序修复】不再盲目置 ready：首屏查库可能早于后台同步落库(日志中"返回0条"即此)，
     // 统一由 titan:library-updated 事件驱动 ready+刷新，304无变化也会触发该事件
-    discoveryStore.init()
+    try {
+      discoveryStore.init()
+    } catch (err) {
+      console.warn('[App] 发现页仓库初始化降级:', err)
+    }
     bootSplashTimer = setTimeout(() => {
       showBootSplash.value = false
     }, 300)
@@ -905,8 +929,12 @@ onMounted(async () => {
     document.documentElement.classList.add('performance-mode')
   }
 
-  await feedbackStore.loadLocal()
-  feedbackStore.startPolling()
+  try {
+    await feedbackStore.loadLocal()
+    feedbackStore.startPolling()
+  } catch (err) {
+    console.warn('[App] 反馈系统初始化跳过:', err)
+  }
 
   window.addEventListener('feedback:new-reply', handleFeedbackReply)
 })
@@ -922,6 +950,7 @@ onUnmounted(() => {
   unsubUpdateReady?.()
   unsubUpdateError?.()
   if (bootSplashTimer) clearTimeout(bootSplashTimer)
+  if (bootSplashForceTimer) clearTimeout(bootSplashForceTimer)
   if (welcomeModalTimer) clearTimeout(welcomeModalTimer)
   if (updateCountdownTimer) clearTimeout(updateCountdownTimer)
   cleanupAudioSync()

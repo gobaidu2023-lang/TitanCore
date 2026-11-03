@@ -973,8 +973,23 @@ export class DownloadService {
         const resolvedDir = path.resolve(dir)
         const resolvedTarget = path.resolve(resolvedDir, filePath)
 
-        // 严格检查目标路径是否位于下载目录内（Windows 大小写不敏感且补齐分隔符）
+        // 防自毁底座保护：严禁以盘符根目录（如 C:\\, D:\\）或 Windows 系统目录作为删除目标或工作根
         const isWindows = process.platform === 'win32'
+        const normalizedTarget = isWindows ? resolvedTarget.toLowerCase() : resolvedTarget
+        const normalizedDir = isWindows ? resolvedDir.toLowerCase() : resolvedDir
+
+        // 1. 拦截根盘符 (例如 c:\\ 或 c:)
+        if (/^[a-zA-Z]:\\?$/.test(normalizedTarget) || /^[a-zA-Z]:\\?$/.test(normalizedDir)) {
+          return { success: false, msg: 'Security blocked: Cannot operate on root drive' }
+        }
+
+        // 2. 拦截系统核心保留目录
+        const dangerousDirs = ['c:\\windows', 'c:\\program files', 'c:\\program files (x86)', 'c:\\programdata', 'c:\\users']
+        if (dangerousDirs.some(d => normalizedTarget === d || normalizedTarget.startsWith(d + '\\') || normalizedDir === d || normalizedDir.startsWith(d + '\\'))) {
+          return { success: false, msg: 'Security blocked: Operation on system directory is forbidden' }
+        }
+
+        // 严格检查目标路径是否位于下载目录内（Windows 大小写不敏感且补齐分隔符）
         const checkTarget = isWindows ? resolvedTarget.toLowerCase() : resolvedTarget
         const checkDir = (isWindows ? resolvedDir.toLowerCase() : resolvedDir).replace(/[\\/]+$/, '') + path.sep
 
