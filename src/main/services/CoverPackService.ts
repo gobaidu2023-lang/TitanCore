@@ -10,23 +10,101 @@ export class CoverPackService {
     private static coversDir: string;
     private static readonly COVER_EXTS = ['.webp', '.jpg', '.png'];
     private static readonly COVER_SECRET = 'TitanV15_KimiFinal_2025';
-    private static pendingFetches = new Set<string>();
+    private static pendingFetches = new Map<string, Promise<boolean>>();
+    private static appIdCache = new Map<string, string>();
 
     public static init() {
         this.coversDir = path.join(Db.getDataRoot(), 'cache', 'covers');
         if (!fs.existsSync(this.coversDir)) fs.mkdirSync(this.coversDir, { recursive: true });
     }
 
-    // 【新增】检查本地缓存封面是否存在（原始优先、归一兜底）
-    public static hasLocalCover(id: string): boolean {
+    // 【核心】从任意资源 ID（如 titan_protocol_1058 / patch_72 / game_1 / col_xxx / steam_gate_xxx）解析真实 Steam AppID
+    public static resolveAppId(id: string, fallbackSrc?: string): string {
+        if (!id && !fallbackSrc) return '';
+        const clean = String(id || '').trim();
+
+        if (/^\d+$/.test(clean)) return clean;
+
+        const directMatch = clean.match(/^(?:steam_gate_|sharegame_)(\d+)$/i);
+        if (directMatch) return directMatch[1];
+
+        if (clean) {
+            const cached = this.appIdCache.get(clean);
+            if (cached) return cached;
+
+            try {
+                const row = Db.query<any>(
+                    'SELECT target_id, cover, meta_json, collection_ids FROM titan_resources WHERE id = ? LIMIT 1',
+                    [clean]
+                )[0];
+
+                if (row) {
+                    let resolved = '';
+
+                    if (row.target_id && /^\d+$/.test(String(row.target_id).trim())) {
+                        resolved = String(row.target_id).trim();
+                    }
+
+                    if (!resolved && row.meta_json) {
+                        try {
+                            const meta = JSON.parse(row.meta_json);
+                            const metaTarget = String(meta?.target_id || meta?.steam_appid || '').trim();
+                            if (/^\d+$/.test(metaTarget)) {
+                                resolved = metaTarget;
+                            }
+                        } catch {}
+                    }
+
+                    if (!resolved && row.cover) {
+                        resolved = this.extractAppIdFromUrl(String(row.cover));
+                    }
+
+                    if (!resolved && row.collection_ids) {
+                        try {
+                            const childIds = JSON.parse(row.collection_ids);
+                            if (Array.isArray(childIds) && childIds.length > 0) {
+                                resolved = this.resolveAppId(String(childIds[0]));
+                            }
+                        } catch {}
+                    }
+
+                    if (resolved && /^\d+$/.test(resolved)) {
+                        this.appIdCache.set(clean, resolved);
+                        return resolved;
+                    }
+                }
+            } catch {}
+        }
+
+        if (fallbackSrc) {
+            const fromSrc = this.extractAppIdFromUrl(fallbackSrc);
+            if (fromSrc && /^\d+$/.test(fromSrc)) {
+                if (clean) this.appIdCache.set(clean, fromSrc);
+                return fromSrc;
+            }
+        }
+
+        return '';
+    }
+
+    private static extractAppIdFromUrl(urlStr: string): string {
+        if (!urlStr) return '';
+        const gwMatch = urlStr.match(/cover_gateway\.php\?id=(\d+)/i);
+        const steamMatch = urlStr.match(/\/steam\/apps\/(\d+)\//i);
+        const webpMatch = urlStr.match(/\/covers\/(?:[0-9a-f]\/[0-9a-f]\/[0-9a-f]\/)?(\d+)\.webp/i);
+        return gwMatch?.[1] || steamMatch?.[1] || webpMatch?.[1] || '';
+    }
+
+    // 【新增】检查本地缓存封面是否存在（原始优先、真实 AppID 归一兜底）
+    public static hasLocalCover(id: string, fallbackSrc?: string): boolean {
         if (!id) return false;
         if (!this.coversDir) this.init();
 
         const idsToCheck: string[] = [id];
         const normalized = id.replace(/^steam_gate_/, '');
         if (normalized !== id) idsToCheck.push(normalized);
-        const numMatch = id.match(/\d+/);
-        if (numMatch && !idsToCheck.includes(numMatch[0])) idsToCheck.push(numMatch[0]);
+        const realAppId = this.resolveAppId(id, fallbackSrc);
+        if (realAppId && !idsToCheck.includes(realAppId)) idsToCheck.push(realAppId);
 
         for (const checkId of idsToCheck) {
             for (const ext of this.COVER_EXTS) {
@@ -36,16 +114,16 @@ export class CoverPackService {
         return false;
     }
 
-    // 【新增】解析本地缓存封面路径（原始优先、归一兜底）
-    public static resolveLocalCover(id: string): string | null {
+    // 【新增】解析本地缓存封面路径（原始优先、真实 AppID 归一兜底）
+    public static resolveLocalCover(id: string, fallbackSrc?: string): string | null {
         if (!id) return null;
         if (!this.coversDir) this.init();
 
         const idsToCheck: string[] = [id];
         const normalized = id.replace(/^steam_gate_/, '');
         if (normalized !== id) idsToCheck.push(normalized);
-        const numMatch = id.match(/\d+/);
-        if (numMatch && !idsToCheck.includes(numMatch[0])) idsToCheck.push(numMatch[0]);
+        const realAppId = this.resolveAppId(id, fallbackSrc);
+        if (realAppId && !idsToCheck.includes(realAppId)) idsToCheck.push(realAppId);
 
         for (const checkId of idsToCheck) {
             for (const ext of this.COVER_EXTS) {
@@ -59,54 +137,64 @@ export class CoverPackService {
     // 【新增】解析 Steam 客户端本地缓存的竖版封面路径（兼容根目录、SHA1哈希子目录及旧版平铺命名，中文与高清优先）
 
     // 【核心新增】当本地未命中时，后台异步携带 HMAC 强签名鉴权向元数据服务器要图并静默落盘
-    public static async fetchAndCacheCover(id: string): Promise<boolean> {
-        if (!id) return false;
-        const numMatch = id.match(/\d+/);
-        const normalizedId = numMatch ? numMatch[0] : id.replace(/^steam_gate_/, '');
+    public static async fetchAndCacheCover(id: string, fallbackSrc?: string): Promise<boolean> {
+        if (!id && !fallbackSrc) return false;
+        const normalizedId = this.resolveAppId(id, fallbackSrc);
         if (!/^\d+$/.test(normalizedId)) return false;
 
-        if (this.pendingFetches.has(normalizedId)) return false;
         if (!this.coversDir) this.init();
 
         const existing = this.resolveLocalCover(normalizedId);
         if (existing) return true;
 
-        this.pendingFetches.add(normalizedId);
+        const inflight = this.pendingFetches.get(normalizedId);
+        if (inflight) return inflight;
 
-        try {
-            const timestamp = Math.floor(Date.now() / 1000);
-            const sign = crypto.createHmac('sha256', this.COVER_SECRET).update(`${normalizedId}:${timestamp}`).digest('hex');
+        const task = (async (): Promise<boolean> => {
+            try {
+                const timestamp = Math.floor(Date.now() / 1000);
+                const sign = crypto.createHmac('sha256', this.COVER_SECRET).update(`${normalizedId}:${timestamp}`).digest('hex');
 
-            const serverUrl = Db.get<any>('app_seed_config')?.serverUrl || Db.get<any>('app_settings')?.serverUrl || (process.env.TITAN_NODE_2 || '');
-            const gatewayUrl = `${serverUrl}/titan/cover_gateway.php?id=${normalizedId}`;
+                const primaryBase = (Db.get<any>('app_seed_config')?.serverUrl || Db.get<any>('app_settings')?.serverUrl || (process.env.TITAN_NODE_2 || '')).replace(/\/$/, '');
+                const masterBase = (process.env.TITAN_NODE_2 || '');
+                const bases = primaryBase === masterBase ? [masterBase] : [primaryBase, masterBase];
 
-            const res = await axios.get(gatewayUrl, {
-                responseType: 'arraybuffer',
-                timeout: 8000,
-                headers: {
-                    'User-Agent': 'TitanCore/3.0',
-                    'X-Titan-Client': 'TitanCore',
-                    'X-Titan-Timestamp': String(timestamp),
-                    'X-Titan-Sign': sign
+                for (const base of bases) {
+                    try {
+                        const gatewayUrl = `${base}/titan/cover_gateway.php?id=${normalizedId}`;
+                        const res = await axios.get(gatewayUrl, {
+                            responseType: 'arraybuffer',
+                            timeout: 12000,
+                            headers: {
+                                'User-Agent': 'TitanCore/3.0',
+                                'X-Titan-Client': 'TitanCore',
+                                'X-Titan-Timestamp': String(timestamp),
+                                'X-Titan-Sign': sign
+                            }
+                        });
+
+                        if (res.status === 200 && res.data && res.data.length > 0) {
+                            const contentType = (res.headers['content-type'] as string) || '';
+                            const ext = contentType.includes('webp') ? '.webp' : (contentType.includes('png') ? '.png' : '.jpg');
+                            const targetPath = path.join(this.coversDir, `${normalizedId}${ext}`);
+                            const tempPath = `${targetPath}.tmp.${Date.now()}`;
+
+                            await fs.promises.writeFile(tempPath, Buffer.from(res.data));
+                            await fs.promises.rename(tempPath, targetPath);
+                            return true;
+                        }
+                    } catch {}
                 }
-            });
-
-            if (res.status === 200 && res.data && res.data.length > 0) {
-                const contentType = (res.headers['content-type'] as string) || '';
-                const ext = contentType.includes('webp') ? '.webp' : (contentType.includes('png') ? '.png' : '.jpg');
-                const targetPath = path.join(this.coversDir, `${normalizedId}${ext}`);
-                const tempPath = `${targetPath}.tmp.${Date.now()}`;
-
-                await fs.promises.writeFile(tempPath, Buffer.from(res.data));
-                await fs.promises.rename(tempPath, targetPath);
-                return true;
+                return false;
+            } catch {
+                return false;
+            } finally {
+                this.pendingFetches.delete(normalizedId);
             }
-            return false;
-        } catch (e: any) {
-            return false;
-        } finally {
-            this.pendingFetches.delete(normalizedId);
-        }
+        })();
+
+        this.pendingFetches.set(normalizedId, task);
+        return task;
     }
 
     public static resolveSteamCover(appId: string, steamPath: string): string | null {

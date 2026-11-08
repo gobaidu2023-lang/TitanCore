@@ -298,15 +298,15 @@ function registerGlobalIPC() {
     }
   })
 
-  ipcMain.handle('sys:redeem-cores', async (_event, score: number, amount: number) => {
+  ipcMain.handle('sys:redeem-cores', async (_event, score: number, amount: number, gameId?: string) => {
     const config = Db.get<any>('app_seed_config')
-    const serverUrl = config?.serverUrl || ''
-    return await GatewayService.redeemCores(score, amount, serverUrl)
+    const serverUrl = config?.serverUrl || Db.get<any>('app_settings')?.serverUrl || ''
+    return await GatewayService.redeemCores(score, amount, serverUrl, gameId || 'default')
   })
 
   ipcMain.handle('badab:claim-victory', async (_event, route: 'justice' | 'corruption', durationSeconds: number, starYear: number) => {
     const config = Db.get<any>('app_seed_config')
-    const serverUrl = config?.serverUrl || ''
+    const serverUrl = config?.serverUrl || Db.get<any>('app_settings')?.serverUrl || ''
     return await GatewayService.claimBadabVictory(route, durationSeconds, starYear, serverUrl)
   })
 }
@@ -467,6 +467,9 @@ app.whenReady().then(async () => {
     e.preventDefault()
     shutdownStarted = true
     isQuitting = true
+    import('./services/DepotHealerService').then(({ DepotHealerService }) => {
+      DepotHealerService.stop()
+    }).catch(() => {})
 
     // 1. 立即隐匿窗口，用户感知瞬间秒退
     if (win && !win.isDestroyed()) {

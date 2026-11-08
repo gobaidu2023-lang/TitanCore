@@ -27,7 +27,7 @@ interface Window {
       pushTelemetry: (events: any[]) => Promise<any>
       batchTelemetry: (events: any[]) => Promise<any>
       toggleAutoUpdate: (resourceId: string, autoUpdate: boolean) => Promise<any>
-      redeemCores: (score: number, amount: number) => Promise<any>
+      redeemCores: (score: number, amount: number, gameId?: string) => Promise<any>
       getDeviceInfo: () => Promise<any>
       getHardwareSpecs: () => Promise<{ cpu: string; gpu: string; memory: string; os: string }>
     }

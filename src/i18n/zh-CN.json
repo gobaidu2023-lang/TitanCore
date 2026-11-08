@@ -1535,7 +1535,7 @@
     "emptyTitle": "暂无游戏",
     "emptyDesc": "独立游戏即将上架",
     "redeemTitle": "兑换中心",
-    "redeemDesc": "使用核心兑换额外下载次数。小游戏游玩可直接获得核心，独立游戏通关后也可兑换。",
+    "redeemDesc": "使用核心兑换永久下载额度。小游戏可解锁生涯成就奖励（上限 3 次）。解锁条件：账号注册满 24 小时且已在客户端入库至少 1 款游戏。",
     "currentHold": "当前持有",
     "redeemN": "兑换 {n} 次额度",
     "redeemOk": "✓ 兑换成功",
@@ -1544,7 +1544,7 @@
     "installFailed": "安装失败",
     "launchFailed": "启动失败",
     "launchFailedMsg": "启动失败: {msg}",
-    "redeemLimit": "今日兑换次数已达上限 (3/3)",
+    "redeemLimit": "该游戏生涯成就额度已达上限 (3/3)",
     "redeemFailed": "兑换失败，请重试",
     "redeemNetError": "网络错误，请检查连接"
   },

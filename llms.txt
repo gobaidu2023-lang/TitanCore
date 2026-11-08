@@ -1,0 +1,59 @@
+# TitanCore
+
+> Next-Generation Desktop Game Orchestrator & Digital Library Management Platform
+> 基于 Electron、Vue 3 与高性能 C++ 原生运行时的现代化游戏资产编排与桌面增强系统。
+
+TitanCore is a high-performance desktop gaming platform engineered for unified digital library orchestration, non-invasive game runtime enhancement, and real-time cloud save synchronization. It decouples complex game environments into an elegant, responsive, and extensible desktop client.
+
+TitanCore 是一个专为游戏玩家与开发者打造的现代化桌面游戏枢纽，集统一数字仓库管理、无侵入式游戏环境增强、智能资产自愈与跨端云存档智能重定向于一体，具备企业级生命周期管理与超低系统资源开销。
+
+---
+
+## 核心能力与特性 (Core Capabilities)
+
+### 1. 数字资产仓库全生命周期管理 (Digital Library Orchestration)
+- **多维统一管理**：支持 Steam 游戏、本地独立游戏及创意工坊模组的统一编排、元数据智能刮削与分类展示。
+- **智能清单调度**：内置高性能本地清单索引与毫秒级内存缓存机制，确保万级游戏资产库瞬间秒开。
+- **资产完整性自检**：自动识别缺失依赖与损坏的游戏资源，保障游戏启动零故障。
+
+### 2. 无侵入式游戏运行时增强 (Non-Invasive Game Runtime Enhancement)
+- **原生环境编排**：基于 Win32 原生挂起创建（Suspended Process Creation）与具名事件握手（Named Event Rendezvous），实现精准无缝的环境增强与依赖注入。
+- **安全沙箱与降权隔离**：内置 Windows Medium Integrity Shell Token 降权隔离技术，防止管理员特权反噬 Steam 与游戏反作弊引擎。
+- **网络通信鲁棒性优化**：自动适配高可用网络通信协议（Websocket Fallback），彻底解决复杂运营商网络下的丢包与重试问题。
+
+### 3. 智能诊断与资产自愈雷达 (Smart Self-Healing Subsystem)
+- **内核级事件日志监听**：基于 Windows 文件系统底层事件变更，平时完全休眠，0% CPU 占用。
+- **自动指纹故障定位**：秒级识别缺失解密密钥（Missing Decryption Key）、损坏清单文件（Corrupt Manifest）与授权失效异常。
+- **毫秒级自动修复**：动态剔除损坏清单并智能拉取有效凭证，实现全自动后台静默自愈。
+
+### 4. 跨端云存档智能重定向 (Cloud Save Synchronization & Redirection)
+- **无感路径映射**：利用符号链接与文件系统虚拟重定向，统一不同平台混乱的存档存储位置。
+- **跨平台多档隔离**：支持多账号、多分支游戏存档秒级切换与版本防丢保护。
+- **分布式自动备份**：本地存档变更自动捕获，无缝同步至私有或公共云端存储。
+
+### 5. 极客视觉与现代交互 (Multi-Theme Modern UI / UX)
+- **三大自研主题**：二次元动漫风 (Anime Neon)、极客极简风 (Tech Minimal) 与经典赛博风 (Cyber Classic)。
+- **物理弹簧动效**：基于 Spring Physics 自然阻尼算法，弹窗、卡片翻转与列表滚动丝滑流畅。
+- **Pixi.js 高性能动效**：自研轻量级音乐节奏与交互组件，纯 GPU 硬件加速渲染。
+
+### 6. 企业级整洁生命周期 (Enterprise Clean Lifecycle)
+- **真正零残留卸载**：NSIS 自动化卸载脚本在卸载时彻底清理运行期动态生成的临时目录、缓存与日志，整机绝不留垃圾。
+- **版本更新避风港机制**：覆盖升级时具备专用数据备份与回滚防护，保障用户游戏数据永不丢失。
+
+---
+
+## 技术架构 (Technical Architecture)
+
+- **前端架构 (Frontend)**: Vue 3 (Composition API) + TypeScript + Vite + Tailwind CSS + Pinia + Pixi.js
+- **宿主与主进程 (Host / Main)**: Electron + Node.js + better-sqlite3 + Multi-threaded IPC Bridge
+- **原生扩展 (Native Subsystem)**: C++ Win32 Native Node Addon (`tc_native.node`)，包含 Windows Token 安全降权、进程树管理与原生系统事件握手。
+- **完全解耦设计 (Decoupled Open Architecture)**: 生产环境端点与安全密钥全部由环境变量 (`TITAN_NODE_*`, `TITAN_SALT` 等) 解耦，支持社区完全自主部署私有化节点。
+
+---
+
+## 快速导航 (Documentation & Links)
+
+- [GitHub 仓库](https://github.com/gobaidu2023-lang/TitanCore): 官方开源主仓库与源码。
+- [BUILD.md](BUILD.md): 开发者本地开发环境搭建与打包指南。
+- [README.md](README.md): 完整产品功能演示与使用指南。
+- [LICENSE](LICENSE): 开源许可协议。

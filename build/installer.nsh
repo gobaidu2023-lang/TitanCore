@@ -191,6 +191,12 @@ FunctionEnd
         RMDir /r "$INSTDIR\userData"
         RMDir /r "$INSTDIR\titan-core"
         RMDir /r "$INSTDIR\TitanCore"
+        RMDir /r "$INSTDIR\games"
+        RMDir /r "$INSTDIR\ost"
+        RMDir /r "$INSTDIR\tools"
+        Delete "$INSTDIR\*.log"
+        Delete "$INSTDIR\*.session"
+        Delete "$INSTDIR\*.tmp"
 
         ; 系统与用户临时目录
         RMDir /r "$TEMP\titan-core"

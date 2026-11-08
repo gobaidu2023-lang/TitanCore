@@ -8,6 +8,7 @@ import { SteamDetector } from './SteamDetector'
 import { ModeSwitchService } from './ModeSwitchService'
 import { CloudSaveService } from './CloudSaveService'
 import { PatternSyncService } from './PatternSyncService'
+import { DepotHealerService } from './DepotHealerService'
 import { Logger } from '../utils/logger'
 
 export interface LaunchSteamResult {
@@ -58,15 +59,7 @@ export class SteamLaunchService {
   // TC-P29: 全仓唯一重启管道 -- 快速强杀(100ms 步进轮询, 死不盲等) -> 复用 launchSteam(模式感知+注入)
   static async restartSteam(): Promise<{ success: boolean; handshake: boolean; degraded?: boolean; error?: string }> {
     try {
-      if (await ModeSwitchService.isSteamAlive()) {
-        try { execFile('taskkill', ['/F', '/T', '/IM', 'steam.exe'], () => {}) } catch { }
-        const deadline = Date.now() + 5000
-        while (Date.now() < deadline) {
-          if (!await ModeSwitchService.isSteamAlive()) break
-          await new Promise(r => setTimeout(r, 100))
-        }
-        if (await ModeSwitchService.isSteamAlive()) return { success: false, handshake: false, error: 'STEAM_STILL_RUNNING' }
-      }
+      await ModeSwitchService.ensureSteamDead()
       return await this.launchSteam()
     } catch (e: any) {
       Logger.error('SteamLaunchService', '一键启动 Steam 发生致命异常:', e?.message || e)
@@ -135,7 +128,7 @@ export class SteamLaunchService {
       } else {
         cleanEnv.CR_STATE_DIR = ModeSwitchService.ostDir
       }
-      const p = spawn(steamExe, [], {
+      const p = spawn(steamExe, ['-websocket'], {
         detached: true,
         stdio: 'ignore',
         cwd: path.dirname(steamExe),
@@ -167,6 +160,11 @@ export class SteamLaunchService {
       const native = this.loadNative()
 
       await ModeSwitchService.ensureSteamDead()
+
+      // 清单崩溃防御：启动 Steam 前静默扫描并清理导致 Steam 闪退的损坏清单文件 (如包含空文件名的残缺清单)
+      try {
+        DepotHealerService.sanitizeDepotCache(steamPath)
+      } catch {}
 
       // 存量云存档静默平滑迁移：在 Steam 彻底退出的黄金窗口期，静默将旧版 cloud_redirect 及日志迁移至 TC 侧
       try {
@@ -231,7 +229,7 @@ export class SteamLaunchService {
         return { success: true, handshake: false, degraded: true, error: !native ? 'NATIVE_MISSING' : 'DLL_MISSING' }
       }
 
-      const timeouts = [15000, 25000]
+      const timeouts = [25000, 35000]
       for (let attempt = 0; attempt < timeouts.length; attempt++) {
         const eventName = `OST_RDV_${process.pid}_${Date.now()}_${attempt}`
         let result: NativeLaunchResult

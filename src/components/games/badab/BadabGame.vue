@@ -1029,11 +1029,17 @@ async function handleClaimVictoryReward(route: 'justice' | 'corruption', elapsed
       }
     } else {
       rewardClaimStatus.value = 'failed'
-      rewardClaimMsg.value = res?.error || '领取失败，请稍后重试'
+      if (res?.error === 'NO_AUTH') {
+        rewardClaimMsg.value = '请先登录 TitanCore 账号后再领取通关特权'
+      } else if (res?.error === 'NETWORK_ERROR') {
+        rewardClaimMsg.value = '网络请求超时，未能连接到特权网关'
+      } else {
+        rewardClaimMsg.value = res?.error || '领取失败，请稍后重试'
+      }
     }
   } catch (err: any) {
     rewardClaimStatus.value = 'failed'
-    rewardClaimMsg.value = '网络异常，未能连接到特权网关'
+    rewardClaimMsg.value = err?.message || '网络异常，未能连接到特权网关'
   }
 }
 

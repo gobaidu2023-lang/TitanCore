@@ -34,7 +34,7 @@
         <div class="flex items-center gap-2 w-full px-4">
           <button 
             type="button"
-            v-if="type !== 'collection'"
+            v-if="type !== 'collection' && type !== 'sharegame'"
             @click.stop="emit('collect')"
             class="flex-1 px-3 py-2 rounded-sm text-[10px] font-black font-code tracking-widest text-center transition-all border cursor-pointer"
             :class="isInLibrary ? 'bg-primary/20 border-primary/30 text-primary hover:bg-primary/30' : 'bg-white/10 border-white/20 text-white/80 hover:bg-white/20 hover:text-white hover:border-white/40'"

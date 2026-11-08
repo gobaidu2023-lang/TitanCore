@@ -325,14 +325,19 @@ export class ModeSwitchService {
   }
 
   static async ensureSteamDead(): Promise<void> {
-    if (!await this.isSteamRunning()) return
+    const wasRunning = await this.isSteamRunning()
     try { await execFileAsync('taskkill', ['/F', '/T', '/IM', 'steam.exe'], { timeout: 5000 }) } catch { }
-    const deadline = Date.now() + 5000
-    while (Date.now() < deadline) {
-      if (!await this.isSteamRunning()) break
-      await delay(100)
+    try { await execFileAsync('taskkill', ['/F', '/IM', 'steamwebhelper.exe'], { timeout: 3000 }) } catch { }
+    try { await execFileAsync('taskkill', ['/F', '/IM', 'crashhandler64.exe'], { timeout: 3000 }) } catch { }
+    try { await execFileAsync('taskkill', ['/F', '/IM', 'crashhandler.exe'], { timeout: 3000 }) } catch { }
+    if (wasRunning) {
+      const deadline = Date.now() + 5000
+      while (Date.now() < deadline) {
+        if (!await this.isSteamRunning()) break
+        await delay(100)
+      }
     }
-    await delay(300)
+    await delay(500)
     if (await this.isSteamRunning()) throw new Error('STEAM_STILL_RUNNING')
   }
 

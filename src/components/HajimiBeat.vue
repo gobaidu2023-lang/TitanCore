@@ -913,7 +913,7 @@ async function doRedeem() {
 
   try {
     const score = redeemAmount.value * 10000;
-    const res = await window.electron.invoke('sys:redeem-cores', score, redeemAmount.value);
+    const res = await window.electron.invoke('sys:redeem-cores', score, redeemAmount.value, 'hajimi_beat');
 
     if (res?.success && res.data) {
       // 🟢 埋点：额度兑换成功

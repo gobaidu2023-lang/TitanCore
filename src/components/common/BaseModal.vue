@@ -4,9 +4,12 @@
       <div
         v-if="visible"
         class="fixed inset-0 z-[9999] flex items-center justify-center transition-all"
-        :class="currentTheme === 'anime' 
-          ? 'bg-slate-900/40 backdrop-blur-sm' 
-          : (currentTheme === 'minimal' ? 'bg-[#06080e]/80 backdrop-blur-md' : 'bg-black/60 backdrop-blur-sm')"
+        :class="[
+          currentTheme === 'anime' 
+            ? 'bg-slate-900/40 backdrop-blur-sm' 
+            : (currentTheme === 'minimal' ? 'bg-[#06080e]/80 backdrop-blur-md' : 'bg-black/60 backdrop-blur-sm'),
+          !visible ? 'pointer-events-none' : ''
+        ]"
         @click.self="handleMaskClick"
       >
         <div
@@ -104,6 +107,10 @@ watch(() => props.visible, (val) => {
 .modal-fade-enter-from,
 .modal-fade-leave-to {
   opacity: 0;
+  pointer-events: none !important;
+}
+.modal-fade-leave-active {
+  pointer-events: none !important;
 }
 
 /* ============================================

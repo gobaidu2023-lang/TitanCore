@@ -2,7 +2,7 @@
   <img 
     :src="currentSrc" 
     :alt="alt || ''" 
-    class="w-full h-full object-cover bg-[#050505] transition-opacity duration-200 select-none"
+    class="w-full h-full object-cover object-center bg-[#050505] transition-opacity duration-200 select-none"
     :class="show ? 'opacity-100' : 'opacity-0'"
     @load="onLoad"
     @error="handleError" 
@@ -31,6 +31,22 @@ const show = ref(false)
 let currentStage = 0
 let lastTrackKey = ''
 
+const buildCoverUrl = (cleanId: string, cleanSrc: string) => {
+  if (!cleanId) return defaultCover
+  const encodedId = encodeURIComponent(cleanId)
+  return cleanSrc
+    ? `titan-img://cover/${encodedId}?src=${encodeURIComponent(cleanSrc)}`
+    : `titan-img://cover/${encodedId}`
+}
+
+const buildSteamUrl = (cleanId: string, cleanSrc: string) => {
+  if (!cleanId) return defaultCover
+  const encodedId = encodeURIComponent(cleanId)
+  return cleanSrc
+    ? `titan-img://steam/${encodedId}?src=${encodeURIComponent(cleanSrc)}`
+    : `titan-img://steam/${encodedId}`
+}
+
 const applyStage = () => {
   const cleanId = props.id ? String(props.id).trim() : ''
   const cleanSrc = props.src ? String(props.src).trim() : ''
@@ -43,9 +59,9 @@ const applyStage = () => {
   if (props.localSteamFirst) {
     // 库视图优先模式：Steam 本地(0) -> Titan 缓存(1) -> 网络图(2) -> 默认图(3)
     if (currentStage === 0) {
-      currentSrc.value = cleanId ? `titan-img://steam/${cleanId}` : defaultCover
+      currentSrc.value = buildSteamUrl(cleanId, cleanSrc)
     } else if (currentStage === 1) {
-      currentSrc.value = cleanId ? `titan-img://cover/${cleanId}` : defaultCover
+      currentSrc.value = buildCoverUrl(cleanId, cleanSrc)
     } else if (currentStage === 2) {
       if (cleanSrc && cleanSrc !== defaultCover) {
         currentSrc.value = cleanSrc
@@ -57,18 +73,18 @@ const applyStage = () => {
       currentSrc.value = defaultCover
     }
   } else {
-    // 标准模式：网络图(0) -> Titan 缓存(1) -> Steam 本地(2) -> 默认图(3)
+    // 标准模式：网络图(0) -> Titan 缓存与网关补图落盘(1) -> Steam 本地(2) -> 默认图(3)
     if (currentStage === 0) {
-      if (cleanSrc && cleanSrc !== defaultCover) {
+      if (cleanSrc && cleanSrc !== defaultCover && !cleanSrc.includes('/titan/cover_gateway.php')) {
         currentSrc.value = cleanSrc
       } else {
         currentStage = 1
-        currentSrc.value = cleanId ? `titan-img://cover/${cleanId}` : defaultCover
+        currentSrc.value = buildCoverUrl(cleanId, cleanSrc)
       }
     } else if (currentStage === 1) {
-      currentSrc.value = cleanId ? `titan-img://cover/${cleanId}` : defaultCover
+      currentSrc.value = buildCoverUrl(cleanId, cleanSrc)
     } else if (currentStage === 2) {
-      currentSrc.value = cleanId ? `titan-img://steam/${cleanId}` : defaultCover
+      currentSrc.value = buildSteamUrl(cleanId, cleanSrc)
     } else {
       currentSrc.value = defaultCover
     }

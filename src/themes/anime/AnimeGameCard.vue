@@ -106,7 +106,7 @@
           </button>
           <button 
             type="button"
-            v-if="type !== 'collection'"
+            v-if="type !== 'collection' && type !== 'sharegame'"
             @click.stop="emit('collect')"
             class="w-full py-2 px-3 rounded-full text-[12px] font-bold tracking-wide text-center cursor-pointer shadow-md active:scale-[0.90] transition-all duration-200"
             :class="isInLibrary 

@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-const ALLOWED_INVOKE_PREFIXES = ['auth:', 'sys:', 'steam:', 'engine:', 'titan:', 'download:', 'app:', 'tcgame:', 'cloudsave:', 'minigame:', 'ost:', 'tools:']
-const ALLOWED_INVOKE_CHANNELS = ['get-desktop-audio-source', 'win-toggle-fullscreen', 'win-is-fullscreen']
+const ALLOWED_INVOKE_PREFIXES = ['auth:', 'sys:', 'steam:', 'engine:', 'titan:', 'download:', 'app:', 'tcgame:', 'cloudsave:', 'minigame:', 'ost:', 'tools:', 'badab:']
+const ALLOWED_INVOKE_CHANNELS = ['get-desktop-audio-source', 'win-toggle-fullscreen', 'win-is-fullscreen', 'badab:claim-victory']
 const ALLOWED_SEND_CHANNELS = ['win-min', 'win-max', 'win-close', 'win-exit-fullscreen']
 const ALLOWED_ON_PREFIXES = ['auth:', 'sys:', 'titan:', 'lifecycle:', 'download:', 'app:', 'tcgame:', 'cloudsave:', 'minigame:', 'tools:']
 
@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld('electron', {
     pushTelemetry: (events: any[]) => ipcRenderer.invoke('sys:push-telemetry', events),
     batchTelemetry: (events: any[]) => ipcRenderer.invoke('sys:batch-telemetry', events),
     toggleAutoUpdate: (resourceId: string, autoUpdate: boolean) => ipcRenderer.invoke('sys:toggle-auto-update', resourceId, autoUpdate),
-    redeemCores: (score: number, amount: number) => ipcRenderer.invoke('sys:redeem-cores', score, amount),
+    redeemCores: (score: number, amount: number, gameId?: string) => ipcRenderer.invoke('sys:redeem-cores', score, amount, gameId),
     getDeviceInfo: () => ipcRenderer.invoke('sys:get-device-info'),
     getHardwareSpecs: () => ipcRenderer.invoke('sys:get-hardware')
   },
@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('electron', {
     uninstall: (gameId: string) => ipcRenderer.invoke('minigame:uninstall', gameId),
     getState: () => ipcRenderer.invoke('minigame:get-state'),
     installed: (gameId: string) => ipcRenderer.invoke('minigame:installed', gameId),
+    claimBadabVictory: (route: 'justice' | 'corruption', elapsedSec: number, starYear: number) => ipcRenderer.invoke('badab:claim-victory', route, elapsedSec, starYear),
     onProgress: (cb: (data: any) => void) => {
       const handler = (_: any, data: any) => cb(data)
       ipcRenderer.on('minigame:install-progress', handler)

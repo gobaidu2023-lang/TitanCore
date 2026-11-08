@@ -88,7 +88,7 @@
             <div class="p-4 rounded-2xl bg-slate-950/70 border border-cyan-500/30 mb-4 text-left">
               <div class="flex items-center justify-between mb-2">
                 <span class="text-xs text-slate-400 font-mono">CURRENT REMIX SCORE</span>
-                <span class="text-xs font-bold text-cyan-300 font-mono">10,000 积分 = 1 配额 (每日上限 3 次)</span>
+                <span class="text-xs font-bold text-cyan-300 font-mono">10,000 积分 = 1 配额 (生涯成就限 3 次)</span>
               </div>
               <div class="flex items-baseline justify-between">
                 <div class="text-3xl font-black text-amber-300 font-mono">
@@ -97,8 +97,8 @@
                 </div>
                 <div class="text-sm font-bold font-mono" :class="canRedeemCount > 0 ? 'text-amber-400' : 'text-slate-400'">
                   可兑换: <span class="text-xl font-black">{{ canRedeemCount }}</span> / 3 个额度
-                  <span v-if="isDailyLimitReached" class="text-[11px] text-rose-400 block font-normal">(今日兑换已达上限)</span>
-                  <span v-else-if="rawCanRedeem > remainingDailyQuota" class="text-[11px] text-amber-400/80 block font-normal">(已达单日上限)</span>
+                  <span v-if="isDailyLimitReached" class="text-[11px] text-rose-400 block font-normal">(生涯成就兑换已达上限)</span>
+                  <span v-else-if="rawCanRedeem > remainingDailyQuota" class="text-[11px] text-amber-400/80 block font-normal">(已达上限)</span>
                 </div>
               </div>
 
@@ -109,10 +109,10 @@
                   class="w-full py-3 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-400 font-bold text-sm tracking-widest flex items-center justify-center gap-2 cursor-not-allowed opacity-80"
                 >
                   <span>🛑</span>
-                  <span>今日配额兑换已达上限 (3/3)</span>
+                  <span>生涯成就配额已达上限 (3/3)</span>
                 </button>
                 <div class="mt-2 text-[11px] text-slate-400 font-mono text-center">
-                  * 今日云端特权配额已全部兑换完毕，当前积分已为您安全保留
+                  * 生涯成就特权配额已全部兑换完毕，当前积分已为您安全保留
                 </div>
               </div>
 
@@ -127,8 +127,9 @@
                   <span v-else>⚡</span>
                   <span>{{ isRedeeming ? '正在连线兑换中...' : `立即直兑 ${canRedeemCount} 个额度配额 (消耗 ${(canRedeemCount * 10000).toLocaleString()} 积分)` }}</span>
                 </button>
-                <div class="mt-2 text-[11px] text-slate-400 font-mono text-center">
-                  * 云端特权配额每日最高可兑换 3 次，多余积分仍将安全保留在当前分数中
+                <div class="mt-2 text-[11px] text-slate-400 font-mono text-center space-y-0.5">
+                  <div>* 解锁条件：账号注册满 24 小时且入库过至少 1 款游戏</div>
+                  <div>* 生涯成就最高可兑换 3 次，多余积分仍将安全保留在当前分数中</div>
                 </div>
               </div>
 
@@ -621,7 +622,7 @@ async function redeemFromGame() {
 
   try {
     const costScore = amount * 10000;
-    const res = await (window as any).electron?.invoke?.('sys:redeem-cores', costScore, amount);
+    const res = await (window as any).electron?.invoke?.('sys:redeem-cores', costScore, amount, 'cyber_guitar');
 
     if (res?.success) {
       // 成功扣减消耗的游戏内积分
@@ -649,7 +650,7 @@ async function redeemFromGame() {
         dailyRedeemInfo.value.count = MAX_DAILY_REDEEM;
         saveDailyRedeemState(MAX_DAILY_REDEEM, true);
         redeemStatusType.value = 'error';
-        redeemStatusMsg.value = '⚠️ 今日兑换次数已达上限（每日限 3 次）';
+        redeemStatusMsg.value = '⚠️ 该游戏生涯成就额度已领满（终生限 3 次）';
       } else {
         redeemStatusType.value = 'error';
         redeemStatusMsg.value = `兑换失败: ${errRaw || '网络连接异常'}`;

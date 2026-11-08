@@ -1535,7 +1535,7 @@
     "emptyTitle": "Coming Soon",
     "emptyDesc": "More indie games on the way.",
     "redeemTitle": "Redeem Quota",
-    "redeemDesc": "Play games to earn Cores, then redeem them for extra download quota.",
+    "redeemDesc": "Redeem cores for permanent download quota (up to 3 times per game). Requirements: Account registered for at least 24 hours and at least 1 game added to library.",
     "currentHold": "Current Cores",
     "redeemN": "Redeem {n} Pts",
     "redeemOk": "✓ Redeemed",
@@ -1544,7 +1544,7 @@
     "installFailed": "Install failed",
     "launchFailed": "Launch failed",
     "launchFailedMsg": "Launch failed: {msg}",
-    "redeemLimit": "Daily limit reached (3/3)",
+    "redeemLimit": "Lifetime achievement limit reached (3/3)",
     "redeemFailed": "Redeem failed, please retry",
     "redeemNetError": "Network error, check connection"
   },

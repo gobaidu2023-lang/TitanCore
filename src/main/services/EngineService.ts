@@ -209,9 +209,16 @@ export class EngineService {
     return { success: true, msg: `SUCCESS_ENGINE_MANUAL:${node}` };
   }
 
+  private static lastSilentCheck: { ts: number; engine: string; result: any } | null = null
+
   static async silentCheckUpdate(engine: 'ost' | 'st'): Promise<{ hasUpdate: boolean; version?: number; engine?: string; msg?: string; remoteConfig?: any }> {
     // 【新增】入口归一化：更新检查只针对 OST 执行，ST 永不再参与（掐断点之三）
     engine = this.normalizeEngine()
+
+    const now = Date.now()
+    if (this.lastSilentCheck && (now - this.lastSilentCheck.ts < 60000) && this.lastSilentCheck.engine === engine) {
+      return this.lastSilentCheck.result
+    }
 
     try {
       const serverUrl = Db.get<any>('app_seed_config')?.serverUrl
@@ -229,11 +236,11 @@ export class EngineService {
       const remoteVersion = remoteConfig.engine_version || 0
       const localState = await this.check(engine)
 
-      if (remoteVersion > localState.version) {
-        return { hasUpdate: true, version: remoteVersion, engine, remoteConfig }
-      }
-
-      return { hasUpdate: false, version: remoteVersion, engine, remoteConfig }
+      const result = (remoteVersion > localState.version)
+        ? { hasUpdate: true, version: remoteVersion, engine, remoteConfig }
+        : { hasUpdate: false, version: remoteVersion, engine, remoteConfig }
+      this.lastSilentCheck = { ts: now, engine, result }
+      return result
     } catch (e: any) {
       console.warn(`[EngineService] Silent check failed:`, e.message)
       return { hasUpdate: false, msg: e.message }

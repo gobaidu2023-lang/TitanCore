@@ -1,6 +1,6 @@
 <template>
   <Transition name="splash-fade">
-    <div v-if="showBootSplash" class="fixed inset-0 z-[9999] bg-[#000000] flex items-center justify-center boot-splash select-none overflow-hidden">
+    <div v-if="showBootSplash" class="fixed inset-0 z-[9999] bg-[#000000] flex items-center justify-center boot-splash select-none overflow-hidden" :class="{ 'pointer-events-none': !showBootSplash }">
       <div class="relative flex items-center justify-center">
         <h1 class="tc-pure-logo font-black font-code select-none">
           T
@@ -467,6 +467,7 @@ let unsubLibUpdated: (() => void) | null = null
 let unsubSyncComplete: (() => void) | null = null
 let unsubUpdateReady: (() => void) | null = null
 let unsubUpdateError: (() => void) | null = null
+let unsubDepotHealed: (() => void) | null = null
 let bootSplashTimer: ReturnType<typeof setTimeout> | null = null
 let bootSplashForceTimer: ReturnType<typeof setTimeout> | null = null
 let welcomeModalTimer: ReturnType<typeof setTimeout> | null = null
@@ -871,6 +872,20 @@ onMounted(async () => {
     })
   })
 
+  unsubDepotHealed = window.electron.on('titan:depot-healed', (data: { appId: number; depotId: number }) => {
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 4500,
+      title: 'TitanCore 智能自愈',
+      text: `已自动排除失效加密分卷 (Depot ${data.depotId})，请在 Steam 中继续下载！`,
+      icon: 'success',
+      background: '#0a0f16',
+      color: '#00f3ff'
+    })
+  })
+
   // 3. 防丢失兜底回查（如果同步极快在监听前就结束了，补偿置 ready）
   window.electron.invoke('sys:get-sync-state').then((s: any) => {
     if (s && !s.running && s.lastSyncAt) discoveryStore.setSyncPhase('ready')
@@ -949,6 +964,7 @@ onUnmounted(() => {
   unsubSyncComplete?.()
   unsubUpdateReady?.()
   unsubUpdateError?.()
+  unsubDepotHealed?.()
   if (bootSplashTimer) clearTimeout(bootSplashTimer)
   if (bootSplashForceTimer) clearTimeout(bootSplashForceTimer)
   if (welcomeModalTimer) clearTimeout(welcomeModalTimer)
@@ -990,7 +1006,7 @@ onUnmounted(() => {
 
 <style>
 /* ========== 全新完美级简大厂风 T 启动动画规范 ========== */
-.boot-splash { contain: layout style paint; }
+.boot-splash { contain: layout style; }
 
 .tc-pure-logo {
   font-size: clamp(90px, 12vw, 180px);
@@ -1035,9 +1051,11 @@ onUnmounted(() => {
 
 .splash-fade-leave-active {
   transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none !important;
 }
 .splash-fade-leave-to {
   opacity: 0;
+  pointer-events: none !important;
 }
 
 /* ========== 性能模式降级与穿透规则 ========== */

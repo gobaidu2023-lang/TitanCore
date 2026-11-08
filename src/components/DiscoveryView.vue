@@ -360,14 +360,28 @@ const syncUserLibraryState = async () => {
   try {
     const lib = await window.electron.sys.getUserLibrary()
     if (Array.isArray(lib)) {
-      userLibrarySet.value = new Set(lib.map(item => resolveContractKey(item)))
+      // 容灾自愈：若历史数据中有被误收藏的 sharegame，静默移出用户库，防止污染状态
+      const validItems: any[] = []
+      for (const item of lib) {
+        if (item.type === 'sharegame') {
+          window.electron.sys.removeUserLibrary(item.resource_id || item.id).catch(() => {})
+        } else {
+          validItems.push(item)
+        }
+      }
+      userLibrarySet.value = new Set(validItems.map(item => resolveContractKey(item)))
     }
   } catch (e) {
   }
 }
 
 const filteredDisplayList = computed(() => {
-  const result = discoveryStore.displayList.filter(item => !userLibrarySet.value.has(resolveContractKey(item)))
+  const isShareTab = discoveryStore.activeTab === 'sharegame'
+  const result = discoveryStore.displayList.filter(item => {
+    // 共享游戏卡片属于公共账号池，绝不因用户库状态被隐藏，保证全量可见
+    if (isShareTab || item.type === 'sharegame' || item.basic?.type === 'sharegame') return true
+    return !userLibrarySet.value.has(resolveContractKey(item))
+  })
   // 公告数据卡片默认置顶排列在橱窗前列
   return [...result].sort((a, b) => {
     const isNoticeA = a.type === 'notice' || a.type === 'announcement' || !!a.meta?.pinned
@@ -411,6 +425,7 @@ const onCardAction = async (item: any) => {
 }
 
 const onCollect = async (item: any) => {
+  if (item.type === 'collection' || item.type === 'sharegame' || item.basic?.type === 'sharegame') return
   const contractKey = resolveContractKey(item)
   const next = new Set(userLibrarySet.value)
   next.add(contractKey)

@@ -1536,7 +1536,7 @@
     "emptyTitle": "暫無遊戲",
     "emptyDesc": "獨立遊戲即將上架",
     "redeemTitle": "兌換中心",
-    "redeemDesc": "使用核心兌換額外下載次數。小遊戲遊玩可直接獲得核心，獨立遊戲破關後也可兌換。",
+    "redeemDesc": "使用核心兌換永久下載額度。小遊戲可解鎖生涯成就獎勵（上限 3 次）。解鎖條件：帳號註冊滿 24 小時且已在客戶端入庫至少 1 款遊戲。",
     "currentHold": "當前持有",
     "redeemN": "兌換 {n} 次額度",
     "redeemOk": "✓ 兌換成功",
@@ -1545,7 +1545,7 @@
     "installFailed": "安裝失敗",
     "launchFailed": "啟動失敗",
     "launchFailedMsg": "啟動失敗: {msg}",
-    "redeemLimit": "今日兌換次數已達上限 (3/3)",
+    "redeemLimit": "該遊戲生涯成就額度已達上限 (3/3)",
     "redeemFailed": "兌換失敗，請重試",
     "redeemNetError": "網路錯誤，請檢查連線"
   },

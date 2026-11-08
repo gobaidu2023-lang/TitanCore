@@ -58,7 +58,7 @@ export class GatewayService {
   }
 
 
-  static async redeemCores(score: number, amount: number, serverUrl: string) {
+  static async redeemCores(score: number, amount: number, serverUrl: string, gameId: string = 'default') {
     const ticket = Db.getEncrypted<any>('auth_ticket')
     if (!serverUrl || !ticket?.token) return { success: false, error: 'NO_AUTH' }
 
@@ -66,17 +66,34 @@ export class GatewayService {
       const res = await titanFetch(`${serverUrl}/titan/titan_gateway.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Titan-Token': ticket.token },
-        body: JSON.stringify({ action: 'redeem_quota', score, amount })
+        body: JSON.stringify({ action: 'redeem_quota', score, amount, game_id: gameId })
       })
 
-      if (res.status === 429) return { success: false, error: 'QUOTA_EXHAUSTED' }
-      if (!res.ok) return { success: false, error: `GATEWAY_REJECTED_${res.status}` }
+      let json: any = null
+      try { json = await res.json() } catch (e) {}
 
-      const json = await res.json()
+      if (json) {
+        const hexPayload = typeof json.data === 'object' ? json.data?.data : json.data
+        let decrypted = hexPayload ? SecurityService.decryptNetworkPayload<any>(hexPayload) : null
+        if (typeof decrypted === 'string') {
+          try { decrypted = JSON.parse(decrypted) } catch (e) {}
+        }
+        const actualData = decrypted && typeof decrypted === 'object' ? (decrypted.data || decrypted) : null
+        const errMsg = actualData?.msg || json.msg || json.error
 
-      if (json.code && json.code !== 200 && json.code !== 0) {
-          return { success: false, error: json.msg || 'REDEEM_FAILED' }
+        if (json.code && json.code !== 200 && json.code !== 0) {
+          return { success: false, error: errMsg || (res.status === 429 ? 'QUOTA_EXHAUSTED' : 'REDEEM_FAILED'), code: json.code }
+        }
+        if (actualData && actualData.redeemed !== undefined) {
+          return { success: true, data: actualData }
+        }
+        if (errMsg) {
+          return { success: false, error: errMsg }
+        }
       }
+
+      if (res.status === 429) return { success: false, error: 'QUOTA_EXHAUSTED' }
+      if (!res.ok) return { success: false, error: GATEWAY_REJECTED_ }
 
       const hexPayload = typeof json.data === 'object' ? json.data?.data : json.data
       let decrypted = SecurityService.decryptNetworkPayload<any>(hexPayload)
@@ -136,7 +153,8 @@ export class GatewayService {
       }
 
       if (decrypted) {
-        return { success: true, data: decrypted }
+        const payloadData = (decrypted.data && (decrypted.data.status || decrypted.data.days_added)) ? decrypted.data : decrypted
+        return { success: true, data: payloadData }
       }
       return { success: false, error: 'PAYLOAD_DECRYPT_FAIL' }
     } catch (e: any) {

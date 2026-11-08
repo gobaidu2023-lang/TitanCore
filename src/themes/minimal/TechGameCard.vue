@@ -79,7 +79,7 @@
           <div class="flex items-center gap-2 w-full">
             <button 
               type="button"
-              v-if="type !== 'collection'"
+              v-if="type !== 'collection' && type !== 'sharegame'"
               @click.stop="emit('collect')"
               class="flex-1 py-2 px-1 rounded-lg text-[12px] font-medium tracking-wide text-center transition-all cursor-pointer active:scale-95"
               :class="isInLibrary 

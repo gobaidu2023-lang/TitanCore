@@ -590,14 +590,11 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
       if (url.hostname === 'cover') {
         const coverPath = CoverPackService.resolveLocalCover(id)
         if (coverPath) return net.fetch(pathToFileURL(coverPath).href)
-        // 本地未命中：后台异步向元数据网关要图落盘，绝不阻塞前台响应
-        CoverPackService.fetchAndCacheCover(id).catch(() => {})
         return new Response('Not Found', { status: 404 })
       }
 
       if (url.hostname === 'steam') {
-        const numMatch = id.match(/\d+/)
-        const normalizedId = numMatch ? numMatch[0] : id.replace(/^steam_gate_/, '')
+        const normalizedId = id.replace(/^steam_gate_/, '')
         if (!/^\d+$/.test(normalizedId)) return new Response('Forbidden', { status: 403 })
         const detectRes = await SteamDetector.detect()
         if (!detectRes?.path) return new Response('Not Found', { status: 404 })
@@ -640,6 +637,9 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     autoConnect().then(() => {
       const sUrl = Db.get<any>('app_seed_config')?.serverUrl || serverUrl
       if (sUrl) {
+        if (typeof (CoverPackService as any)?.syncPacks === 'function') {
+          (CoverPackService as any).syncPacks(`${sUrl}/titan/cover_packs.json`).catch(() => {})
+        }
         SyncManager.startSync({ force: firstLaunch }).catch(() => {})
       }
     }).catch((err: any) => {
@@ -1274,9 +1274,27 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
       }
     }
 
+    const detectRes = await SteamDetector.detect()
+    const targetLuaDir = detectRes?.path ? ModeSwitchService.getActiveLuaDir(detectRes.path) : null
+    if (targetLuaDir && !fs.existsSync(targetLuaDir)) {
+      try { fs.mkdirSync(targetLuaDir, { recursive: true }) } catch {}
+    }
+
     const importedIds: string[] = []
     let failed = 0
     for (const appId of toImport) {
+      if (targetLuaDir) {
+        const srcLuaPath = path.join(dir, `${appId}.lua`)
+        if (fs.existsSync(srcLuaPath)) {
+          try {
+            let luaContent = fs.readFileSync(srcLuaPath, 'utf-8')
+            luaContent = DepotKeyService.patchLuaContent(appId, luaContent)
+            fs.writeFileSync(path.join(targetLuaDir, `${appId}.lua`), luaContent, 'utf-8')
+          } catch (e: any) {
+            console.warn(`[sys:import-lua-folder] 复制/注入 lua 失败: ${appId}`, e.message)
+          }
+        }
+      }
       const meta = metaMap[appId] || { title: `AppID: ${appId}`, cover: '' }
       const res = LibraryService.toggleLibrary(`steam_gate_${appId}`, {
         title: meta.title,

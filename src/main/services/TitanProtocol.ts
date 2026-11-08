@@ -11,6 +11,7 @@ import { DepotKeyService } from './DepotKeyService';
 import { ModeSwitchService } from './ModeSwitchService'
 import { CloudSaveService } from './CloudSaveService';
 import { PatternSyncService } from './PatternSyncService';
+import { DepotHealerService } from './DepotHealerService';
 
 export interface ProtocolConfig {
     app_id: string;
@@ -48,6 +49,7 @@ export class TitanProtocol {
     private static deploymentLocks: Map<string, number> = new Map();
     private static readonly LOCK_TTL_MS = 90000;
     private static readonly GLOBAL_LOCK_KEY = 'GLOBAL_REPAIR';
+    private static manifestCacheInMemory: Record<string, Array<{ depotId: string; manifestId: string; ts: number }>> | null = null;
 
     // ================= [ 云存档 DLL 实用工具 ] =================
 
@@ -852,6 +854,10 @@ export class TitanProtocol {
                 if (fs.statSync(filePath).isDirectory()) {
                     await walkManifests(filePath);
                 } else if (file.includes('_manifest') || file.endsWith('.manifest')) {
+                    if (DepotHealerService.isCorruptManifest(filePath)) {
+                        console.warn(`[TitanProtocol] 拦截损坏清单 (空文件名防崩溃): ${file}`);
+                        continue;
+                    }
                     const m = file.match(MANIFEST_RE);
                     if (m) {
                         manifestEntries.push({ depotId: m[1], manifestId: m[2], ts: Date.now() });
@@ -869,12 +875,14 @@ export class TitanProtocol {
                 const cacheDir = path.join(Db.getDataRoot(), 'cache');
                 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
                 const cachePath = path.join(cacheDir, 'manifest_cache.json');
-                let cache: Record<string, Array<{ depotId: string; manifestId: string; ts: number }>> = {};
-                if (fs.existsSync(cachePath)) {
-                    try { cache = JSON.parse(fs.readFileSync(cachePath, 'utf-8')); } catch {}
+                if (!this.manifestCacheInMemory) {
+                    if (fs.existsSync(cachePath)) {
+                        try { this.manifestCacheInMemory = JSON.parse(fs.readFileSync(cachePath, 'utf-8')); } catch {}
+                    }
+                    if (!this.manifestCacheInMemory) this.manifestCacheInMemory = {};
                 }
-                cache[appId] = manifestEntries;
-                fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf-8');
+                this.manifestCacheInMemory[appId] = manifestEntries;
+                fs.writeFileSync(cachePath, JSON.stringify(this.manifestCacheInMemory, null, 2), 'utf-8');
             } catch (e: any) {
                 console.warn('[TitanProtocol] 部署写入 manifest_cache.json 失败:', e.message);
             }

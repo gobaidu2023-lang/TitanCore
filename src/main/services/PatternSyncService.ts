@@ -14,12 +14,19 @@ interface PatternTarget {
 }
 
 export class PatternSyncService {
+  private static shaCache = new Map<string, { mtimeMs: number; size: number; hash: string }>()
+
   /**
    * 计算指定文件的 SHA256 哈希值（小写 64 位十六进制）
    */
   private static calculateSha256(filePath: string): string | null {
     try {
       if (!fs.existsSync(filePath)) return null
+      const stat = fs.statSync(filePath)
+      const cached = this.shaCache.get(filePath)
+      if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+        return cached.hash
+      }
       // TC-P1: 4MB 分段读，大文件不再整体进内存；保持同步签名，调用方零改动
       const hash = crypto.createHash('sha256')
       const fd = fs.openSync(filePath, 'r')
@@ -32,9 +39,11 @@ export class PatternSyncService {
       } finally {
         fs.closeSync(fd)
       }
-      return hash.digest('hex').toLowerCase()
+      const digest = hash.digest('hex').toLowerCase()
+      this.shaCache.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, hash: digest })
+      return digest
     } catch (e: any) {
-      console.warn(`[PatternSyncService] 读取计算哈希失败: ${filePath}`, e.message)
+      console.warn('[PatternSyncService] 读取计算哈希失败: ' + filePath, e.message)
       return null
     }
   }

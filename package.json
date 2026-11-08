@@ -1,12 +1,12 @@
 {
   "name": "TitanCore",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "vite",
     "build": "node -e \"try{fs.rmSync('dist',{recursive:true,force:true})}catch(e){}\" && vite build",
     "preview": "vite preview",
-    "dist": "node -e \"try{fs.rmSync('node_modules/electron/dist/ost',{recursive:true,force:true})}catch(e){};try{fs.rmSync('release',{recursive:true,force:true})}catch(e){}\" && vite build && electron-builder",
+    "dist": "node -e \"try{fs.rmSync('dist',{recursive:true,force:true})}catch(e){};try{fs.rmSync('dist-electron',{recursive:true,force:true})}catch(e){};try{fs.rmSync('node_modules/electron/dist/ost',{recursive:true,force:true})}catch(e){};try{fs.rmSync('release/${version}',{recursive:true,force:true})}catch(e){}\" && vite build && electron-builder",
     "postinstall": "electron-rebuild -f -w better-sqlite3 -w bufferutil -w utf-8-validate",
     "build:native": "cmake-js compile --runtime=electron"
   },
