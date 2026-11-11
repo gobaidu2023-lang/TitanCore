@@ -3,12 +3,13 @@
 import { app, ipcMain, BrowserWindow } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFile, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { Db } from '../db'
 import { DownloadService } from './DownloadService'
 import { ArchiveService } from '../utils/ArchiveService'
 import { titanFetch } from '../TitanNet'
+import { WinNative } from '../utils/winNative'
 
 export interface ToolDef {
   id: string        // 客户端内部工具 id (ipc/路径用)
@@ -335,9 +336,9 @@ export class ToolService {
           }
 
           // 解压前释放可能运行中的旧进程占用，防止 Windows 文件写锁导致解压失败
-          await this.taskkillAsync(def.killImage)
+          await this.killProcessAsync(def.killImage)
           if (def.id === 'asf') {
-            await this.taskkillAsync('ArchiSteamFarm.exe')
+            await this.killProcessAsync('ArchiSteamFarm.exe')
           }
 
           // 强制覆盖解压，避免已有同名文件导致冲突报错
@@ -370,27 +371,18 @@ export class ToolService {
     }
   }
 
-  private static async taskkillAsync(image: string): Promise<void> {
-    await new Promise<void>(resolve => {
-      try {
-        execFile('taskkill', ['/F', '/T', '/IM', image], () => resolve())
-      } catch {
-        resolve()
-      }
-    })
+  private static async killProcessAsync(image: string): Promise<void> {
+    try {
+      WinNative.killProcesses([image], true)
+    } catch {}
   }
 
   private static async isProcessRunning(image: string): Promise<boolean> {
-    return new Promise<boolean>(resolve => {
-      try {
-        execFile('tasklist', ['/FI', 'IMAGENAME eq ' + image, '/NH'], (err, stdout) => {
-          if (err || !stdout) return resolve(false)
-          resolve(stdout.toLowerCase().includes(image.toLowerCase()))
-        })
-      } catch {
-        resolve(false)
-      }
-    })
+    try {
+      return WinNative.isProcessRunning(image)
+    } catch {
+      return false
+    }
   }
 
   private static async rmWithRetry(target: string, tries = 3): Promise<void> {
@@ -418,10 +410,10 @@ export class ToolService {
     const task = (async () => {
       try {
         const target = this.getToolDir(def.id)
-        await this.taskkillAsync(def.killImage)
+        await this.killProcessAsync(def.killImage)
         // 关键级联清理: 卸载 ASF 时同时杀死后台 ArchiSteamFarm.exe，释放文件占用锁
         if (def.id === 'asf') {
-          await this.taskkillAsync('ArchiSteamFarm.exe')
+          await this.killProcessAsync('ArchiSteamFarm.exe')
         }
         await this.rmWithRetry(target)
         console.log(`[ToolService] uninstall OK: ${def.id}`)
@@ -475,9 +467,9 @@ export class ToolService {
 
     // 智能防呆自愈：如果本地目标工具目录尚无可执行文件，但开发工作区已就绪，立即秒级复制自愈
     if (!installed) {
-      const devSourceDir = 'D:\\工作\\TitanPatcher'
-      const devExe = path.join(devSourceDir, 'TitanPatcher.exe')
-      if (fs.existsSync(devExe)) {
+      const devSourceDir = process.env.TITAN_PATCHER_DEV_DIR || ''
+      const devExe = devSourceDir ? path.join(devSourceDir, 'TitanPatcher.exe') : ''
+      if (devExe && fs.existsSync(devExe)) {
         try {
           const parentDir = this.getToolDir(toolId)
           fs.mkdirSync(parentDir, { recursive: true })
@@ -523,7 +515,7 @@ export class ToolService {
           winnerGid = raceRes.winnerGid
           const zipPath = raceRes.zipPath
 
-          await this.taskkillAsync('TitanPatcher.exe')
+          await this.killProcessAsync('TitanPatcher.exe')
           await ArchiveService.extract(zipPath, parentDir, { overwrite: true })
 
           if (remoteMeta.sha1) {

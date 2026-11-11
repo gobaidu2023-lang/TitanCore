@@ -31,6 +31,7 @@ import { CloudSaveService, registerCloudSaveService } from './CloudSaveService'
 import { ToolService, registerToolService } from './ToolService'
 import { DiagnosticExportService } from './DiagnosticExportService'
 import { ShareGateService } from './ShareGateService'
+import { DepotHealerService } from './DepotHealerService'
 
 // 进程保活：杜绝 dev 调试时因微小未捕获异步异常导致闪退
 process.on('uncaughtException', (err) => {
@@ -528,6 +529,7 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     DepotKeyService.syncIfNeeded().catch(() => {})
   }, 120_000)
   
+  CoverPackService.init()
   try { (protocol as any).unhandle('titan-img') } catch {}
   protocol.handle('titan-img', async (request) => {
     try {
@@ -588,7 +590,14 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
       if (!/^[a-zA-Z0-9_-]+$/.test(id)) return new Response('Forbidden', { status: 403 })
 
       if (url.hostname === 'cover') {
-        const coverPath = CoverPackService.resolveLocalCover(id)
+        const fallbackSrc = url.searchParams.get('src') || undefined
+        let coverPath = CoverPackService.resolveLocalCover(id, fallbackSrc)
+        if (!coverPath) {
+          const ok = await CoverPackService.fetchAndCacheCover(id, fallbackSrc)
+          if (ok) {
+            coverPath = CoverPackService.resolveLocalCover(id, fallbackSrc)
+          }
+        }
         if (coverPath) return net.fetch(pathToFileURL(coverPath).href)
         return new Response('Not Found', { status: 404 })
       }
@@ -637,16 +646,16 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     autoConnect().then(() => {
       const sUrl = Db.get<any>('app_seed_config')?.serverUrl || serverUrl
       if (sUrl) {
-        if (typeof (CoverPackService as any)?.syncPacks === 'function') {
-          (CoverPackService as any).syncPacks(`${sUrl}/titan/cover_packs.json`).catch(() => {})
-        }
+        
         SyncManager.startSync({ force: firstLaunch }).catch(() => {})
       }
     }).catch((err: any) => {
       console.error('[NET] autoConnect error:', err)
     })
 
-    SteamDetector.detect().catch(() => {})
+    SteamDetector.detect().then((det) => {
+      if (det?.path) DepotHealerService.start(det.path).catch(() => {})
+    }).catch(() => {})
 
     // return the REAL first-launch flag in 0ms (flag passed from main.ts via initCore)
     return { isFirstLaunch: firstLaunch }

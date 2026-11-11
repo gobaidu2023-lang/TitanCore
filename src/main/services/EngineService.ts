@@ -68,9 +68,9 @@ export class EngineService {
     const fromDb = Db.get<Record<string, string>>('manifest_node_map');
     if (fromDb && Object.keys(fromDb).length >= 3) return fromDb;
     return {
-      opensteamtool: 'https://manifest.opensteamtool.com',
-      wudrm: 'http://gmrc.wudrm.com/manifest',
-      steamrun: 'https://manifest.steam.run/api/manifest'
+      opensteamtool: process.env.TITAN_MANIFEST_NODE_1 || '',
+      wudrm: process.env.TITAN_MANIFEST_NODE_2 || '',
+      steamrun: process.env.TITAN_MANIFEST_NODE_3 || ''
     };
   }
 
@@ -140,6 +140,7 @@ export class EngineService {
 
     const results = await Promise.allSettled(
       nodeNames.map(async (name) => {
+        if (!nodeMap[name]) return { name, isConnected: false };
         const probeUrl = `${nodeMap[name]}/${TEST_GID}`;
         const isConnected = await this.probeNode(probeUrl, 5000);
         return { name, isConnected };

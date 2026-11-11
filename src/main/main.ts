@@ -153,7 +153,7 @@ function setupAppProtocolAndNetwork() {
         if (id) {
           const cleanId = id.replace(/^steam_gate_/, '')
           const ts = Math.floor(Date.now() / 1000)
-          const secret = 'TitanV15_KimiFinal_2025'
+          const secret = process.env.TITAN_CLIENT_SECRET || 'TITAN_COMMUNITY_CLIENT_SECRET'
           const sign = crypto.createHmac('sha256', secret).update(`${cleanId}:${ts}`).digest('hex')
           details.requestHeaders['X-Titan-Timestamp'] = String(ts)
           details.requestHeaders['X-Titan-Sign'] = sign
@@ -300,13 +300,13 @@ function registerGlobalIPC() {
 
   ipcMain.handle('sys:redeem-cores', async (_event, score: number, amount: number, gameId?: string) => {
     const config = Db.get<any>('app_seed_config')
-    const serverUrl = config?.serverUrl || Db.get<any>('app_settings')?.serverUrl || ''
+    const serverUrl = config?.serverUrl || Db.get<any>('app_settings')?.serverUrl || process.env.TITAN_NODE_1 || ''
     return await GatewayService.redeemCores(score, amount, serverUrl, gameId || 'default')
   })
 
   ipcMain.handle('badab:claim-victory', async (_event, route: 'justice' | 'corruption', durationSeconds: number, starYear: number) => {
     const config = Db.get<any>('app_seed_config')
-    const serverUrl = config?.serverUrl || Db.get<any>('app_settings')?.serverUrl || ''
+    const serverUrl = config?.serverUrl || Db.get<any>('app_settings')?.serverUrl || process.env.TITAN_NODE_1 || ''
     return await GatewayService.claimBadabVictory(route, durationSeconds, starYear, serverUrl)
   })
 }

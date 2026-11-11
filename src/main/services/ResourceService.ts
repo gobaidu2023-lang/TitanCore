@@ -38,13 +38,13 @@ export class ResourceService {
             const firstId = String(childIds[0])
             const numMatch = firstId.match(/\d+/)
             if (numMatch) {
-              row.cover = `${process.env.TITAN_NODE_2 || ''}/titan/cover_gateway.php?id=${numMatch[0]}`
+              row.cover = process.env.TITAN_NODE_2 ? `${process.env.TITAN_NODE_2}/titan/cover_gateway.php?id=${numMatch[0]}` : ''
             } else {
               const childRow = Db.query<any>(`SELECT cover, target_id FROM titan_resources WHERE id = ? LIMIT 1`, [firstId])[0]
               if (childRow?.cover) {
                 row.cover = childRow.cover
               } else if (childRow?.target_id) {
-                row.cover = `${process.env.TITAN_NODE_2 || ''}/titan/cover_gateway.php?id=${childRow.target_id}`
+                row.cover = process.env.TITAN_NODE_2 ? `${process.env.TITAN_NODE_2}/titan/cover_gateway.php?id=${childRow.target_id}` : ''
               }
             }
           }
@@ -132,7 +132,7 @@ export class ResourceService {
           if (!row.cover || row.cover.trim() === '') {
             const appId = row.target_id || rawAppId
             if (appId) {
-              row.cover = `${process.env.TITAN_NODE_2 || ''}/titan/cover_gateway.php?id=${appId}`
+              row.cover = process.env.TITAN_NODE_2 ? `${process.env.TITAN_NODE_2}/titan/cover_gateway.php?id=${appId}` : ''
             }
           }
           ordered.push(row)
@@ -143,7 +143,7 @@ export class ResourceService {
               id: `steam_gate_${rawAppId}`,
               type: 'titan_protocol',
               title: `Steam App (${rawAppId})`,
-              cover: `${process.env.TITAN_NODE_2 || ''}/titan/cover_gateway.php?id=${rawAppId}`,
+              cover: process.env.TITAN_NODE_2 ? `${process.env.TITAN_NODE_2}/titan/cover_gateway.php?id=${rawAppId}` : '',
               target_id: rawAppId,
               status: 'active',
               tags: 'STEAM,AUTO',

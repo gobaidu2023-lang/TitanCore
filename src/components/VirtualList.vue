@@ -41,8 +41,8 @@ const COL_MAP: Record<number, string> = {
 // --- 响应式引用 ---
 const containerRef = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
-const containerHeight = ref(800)
-const containerWidth = ref(1200)
+const containerHeight = ref(0)
+const containerWidth = ref(0)
 
 const gridColsClass = computed(() => COL_MAP[props.columns] || 'grid-cols-4')
 
@@ -57,7 +57,7 @@ const totalHeight = computed(() => totalRows.value * dynamicRowHeight.value)
 
 const visibleRange = computed(() => {
   const h = dynamicRowHeight.value
-  if (h <= 0 || props.columns === 0) return { start: 0, end: 0, offsetY: 0 }
+  if (h <= 0 || props.columns === 0 || containerHeight.value <= 0) return { start: 0, end: 0, offsetY: 0 }
   
   const startRow = Math.floor(scrollTop.value / h)
   const minRow = Math.max(0, startRow - BUFFER_ROWS)
@@ -89,10 +89,14 @@ let resizeObserver: ResizeObserver | null = null
 
 const initResizeObserver = () => {
   if (!containerRef.value) return
-  // 直接解构首个 entry，规避冗余 for...of
+  // 直接解构首个 entry，规避冗余 for...of；隐藏态(0尺寸)保持静默，恢复可见时同步真实 scrollTop 防止切走重置导致空白
   resizeObserver = new ResizeObserver(([entry]) => {
-    containerHeight.value = entry.contentRect.height
-    containerWidth.value = entry.contentRect.width
+    const { height, width } = entry.contentRect
+    if (height > 0) containerHeight.value = height
+    if (width > 0) containerWidth.value = width
+    if (height > 0 && width > 0 && containerRef.value) {
+      scrollTop.value = containerRef.value.scrollTop || 0
+    }
   })
   resizeObserver.observe(containerRef.value)
 }
@@ -105,8 +109,12 @@ defineExpose({ scrollToTop, setScrollTop, getScrollTop })
 
 onMounted(() => {
   if (containerRef.value) {
-    containerHeight.value = containerRef.value.clientHeight
-    containerWidth.value = containerRef.value.clientWidth
+    const el = containerRef.value
+    const isVisible = el.getClientRects().length > 0
+    if (el.clientHeight > 0) containerHeight.value = el.clientHeight
+    else if (isVisible) containerHeight.value = 800
+    if (el.clientWidth > 0) containerWidth.value = el.clientWidth
+    else if (isVisible) containerWidth.value = 1200
     initResizeObserver()
   }
 })

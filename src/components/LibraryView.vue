@@ -1,7 +1,6 @@
 <!-- 文件名: src/components/LibraryView.vue -->
 <template>
   <div 
-  <div 
     class="h-full flex flex-col relative overflow-hidden select-none animate-fade-in transition-colors duration-300 px-8 pt-5" 
     :class="[
       currentTheme === 'anime' ? 'bg-transparent text-[#2b2238]' : '',
@@ -938,7 +937,8 @@ const handleAction = async (action: string) => {
   menu.value.show = false
 
   if (action === 'gotoPatchCommunity') {
-    window.electron.invoke('open-external', 'https://www.modvips.com')
+    const communityUrl = import.meta.env.VITE_PATCH_COMMUNITY_URL || ''
+    if (communityUrl) window.electron.sys.openExternal(communityUrl)
   } else if (action === 'openPatcher') {
     tcToast('正在准备官方补丁助手...', '', 'info')
     const res = await window.electron.invoke('titan:open-patcher') as { success?: boolean; error?: string }

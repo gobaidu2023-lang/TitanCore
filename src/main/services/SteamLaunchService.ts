@@ -1,6 +1,6 @@
 // 文件名: src/main/services/SteamLaunchService.ts
 // TC 侧适配 第3批: 从 TC 启动 Steam(纯净=挂起注入+握手; 经典=普通启动; 失败自动降级)
-import { execFile, execFileSync, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -10,6 +10,7 @@ import { CloudSaveService } from './CloudSaveService'
 import { PatternSyncService } from './PatternSyncService'
 import { DepotHealerService } from './DepotHealerService'
 import { Logger } from '../utils/logger'
+import { WinNative } from '../utils/winNative'
 
 export interface LaunchSteamResult {
   success: boolean
@@ -29,56 +30,25 @@ interface NativeLaunchResult {
 }
 
 export class SteamLaunchService {
-  private static native: any = null
-  private static nativeTried = false
   private static busy = false
 
-  // 惰性加载原生插件: 先打包资源目录, 后开发目录
   private static loadNative(): any {
-    if (this.nativeTried) return this.native
-    this.nativeTried = true
-    const candidates: string[] = [
-      path.join(process.resourcesPath || '', 'bin', 'tc_native.node'),
-      path.join(path.dirname(process.execPath), 'resources', 'bin', 'tc_native.node')
-    ]
-    try { candidates.push(path.join(app.getAppPath(), 'native', 'build', 'Release', 'tc_native.node')) } catch { }
-    candidates.push(path.join(path.dirname(process.execPath), '..', '..', '..', 'native', 'build', 'Release', 'tc_native.node'))
-    try { candidates.push(path.join(app.getAppPath(), 'build', 'native', 'Release', 'tc_native.node')) } catch { }  // TC-P17: add_subdirectory 产物位
-    try { candidates.push(path.join(app.getAppPath(), 'resources', 'bin', 'tc_native.node')) } catch { }  // TC-P17: 编译后自动复制位
-    for (const p of candidates) {
-      try {
-        if (p && fs.existsSync(p)) { this.native = require(p); return this.native }
-      } catch (e: any) {
-        console.error('[SteamLaunchService] 原生插件加载失败:', p, e?.message)
-      }
-    }
-    console.error('[SteamLaunchService] 原生插件未找到, 降级为普通启动')
-    return null
+    return WinNative.getNativeModule()
   }
 
-  // TC-P29: 全仓唯一重启管道 -- 快速强杀(100ms 步进轮询, 死不盲等) -> 复用 launchSteam(模式感知+注入)
-  static async restartSteam(): Promise<{ success: boolean; handshake: boolean; degraded?: boolean; error?: string }> {
-    try {
-      await ModeSwitchService.ensureSteamDead()
-      return await this.launchSteam()
-    } catch (e: any) {
-      Logger.error('SteamLaunchService', '一键启动 Steam 发生致命异常:', e?.message || e)
-      return { success: false, handshake: false, error: e?.message || 'UNKNOWN' }
-    }
+  // TC-P29: 全仓统一重启管道 -- 直接复用 launchSteam 完整生命周期 (关净排空 -> 模式感知 -> 注入拉起)
+  static async restartSteam(): Promise<LaunchSteamResult> {
+    return await this.launchSteam()
   }
 
   // 启动账号预测：优先注册表 AutoLoginUser，其次 VDF 活跃/最近标记，再次时间戳排序
   public static predictActiveSteamAccount(steamPath: string): { steamId64: string; accountName: string; personaName: string; source: string } | null {
     try {
-      // 1. 优先读取注册表 AutoLoginUser（安全绝对寻址，防止 PATH 丢失）
+      // 1. 优先读取注册表 AutoLoginUser（原生 Win32 API 读取）
       let regUser: string | null = null
       try {
-        const sysRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows'
-        const regTarget = path.join(sysRoot, 'System32', 'reg.exe')
-        const regExe = fsSync.existsSync(regTarget) ? regTarget : 'reg.exe'
-        const out = execFileSync(regExe, ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'AutoLoginUser'], { encoding: 'utf-8', timeout: 2000 })
-        const m = out.match(/AutoLoginUser\s+REG_SZ\s+(.+)/i)
-        if (m && m[1]) regUser = m[1].trim()
+        const val = WinNative.regReadString('HKCU', 'Software\\Valve\\Steam', 'AutoLoginUser')
+        if (val && val.trim()) regUser = val.trim()
       } catch {}
 
       // 2. 结构化读取 loginusers.vdf
@@ -141,7 +111,7 @@ export class SteamLaunchService {
   }
 
   // 一键启动: 关净 Steam -> (纯净)预写分流标记 -> 注入启动 -> 失败自动重试/降级
-  static async launchSteam(): Promise<{ success: boolean; handshake: boolean; degraded?: boolean; error?: string }> {
+  static async launchSteam(): Promise<LaunchSteamResult> {
     if (this.busy) return { success: false, handshake: false, error: 'BUSY' }
     this.busy = true
     try {
@@ -218,6 +188,7 @@ export class SteamLaunchService {
           console.warn('[SteamLaunchService] 经典模式同步最新工具包异常:', err?.message)
         })
         this.plainLaunch(steamExe)
+        DepotHealerService.start(steamPath).catch(() => {})
         return { success: true, handshake: false }
       }
 
@@ -235,13 +206,16 @@ export class SteamLaunchService {
         let result: NativeLaunchResult
         try {
           result = await new Promise<NativeLaunchResult>((resolve, reject) => {
-            ;(this.native.launchSuspended as any)(steamExe, dllPath, ostRoot, eventName, timeouts[attempt],
+            ;(native.launchSuspended as any)(steamExe, dllPath, ostRoot, eventName, timeouts[attempt],
               (err: any, res: NativeLaunchResult) => err ? reject(err) : resolve(res))
           })
         } catch (e: any) {
           result = { pid: 0, handshake: false, injected: false, error: e?.message || String(e) }
         }
-        if (result.handshake) return { success: true, handshake: true }
+        if (result.handshake) {
+          DepotHealerService.start(steamPath).catch(() => {})
+          return { success: true, handshake: true }
+        }
         console.error(`[SteamLaunchService] 注入尝试${attempt + 1}未握手:`, result.error)
         if (attempt < timeouts.length - 1) await ModeSwitchService.ensureSteamDead()
       }
@@ -251,6 +225,7 @@ export class SteamLaunchService {
       ModeSwitchService.setTomlKey(tomlPath, 'diversion', 'enabled', 'false')
       await ModeSwitchService.ensureSteamDead()
       this.plainLaunch(steamExe)
+      DepotHealerService.start(steamPath).catch(() => {})
       return { success: true, handshake: false, degraded: true, error: 'HANDSHAKE_TIMEOUT' }
     } catch (e: any) {
       return { success: false, handshake: false, error: e?.message || 'UNKNOWN' }
@@ -261,6 +236,8 @@ export class SteamLaunchService {
 
   // 原生干净启动: 彻底不加载任何辅助或注入插件，纯原生拉起 steam.exe
   static async launchSteamNative(): Promise<{ success: boolean; native: boolean; error?: string }> {
+    if (this.busy) return { success: false, native: true, error: 'BUSY' }
+    this.busy = true
     try {
       const det = await SteamDetector.detect()
       const steamPath = det.path
@@ -274,6 +251,8 @@ export class SteamLaunchService {
     } catch (e: any) {
       console.error('[SteamLaunchService] 原生启动异常:', e?.message)
       return { success: false, native: true, error: e?.message || 'UNKNOWN' }
+    } finally {
+      this.busy = false
     }
   }
 

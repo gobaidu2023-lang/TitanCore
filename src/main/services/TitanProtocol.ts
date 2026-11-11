@@ -2,11 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { app, BrowserWindow } from 'electron';
 import axios from 'axios';
-import { exec, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import util from 'util';
 import { Db } from '../db';
 import { ArchiveService } from '../utils/ArchiveService';
 import { RacingDownloader } from '../utils/RacingDownloader';
+import { WinNative } from '../utils/winNative';
 import { DepotKeyService } from './DepotKeyService'; 
 import { ModeSwitchService } from './ModeSwitchService'
 import { CloudSaveService } from './CloudSaveService';
@@ -404,9 +405,7 @@ export class TitanProtocol {
     private static async killSteam(): Promise<void> {
         try {
             this.broadcast(null, 'protocol.STATUS_KILL_STEAM', 'clean');
-            const execAsync = util.promisify(exec);
-            
-            await execAsync('taskkill /F /IM steam.exe /T');
+            WinNative.killProcesses(['steam.exe', 'steamwebhelper.exe', 'crashhandler64.exe', 'crashhandler.exe'], true);
             await new Promise(resolve => setTimeout(resolve, 1500));
         } catch (e) {
         }

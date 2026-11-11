@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(tc_native LANGUAGES CXX)
+project(tc_native LANGUAGES CXX RC)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # TC-P19: 消除 MSVC 中文 UTF-8 警告 (C4819)
 if(MSVC)
-  add_compile_options(/utf-8)
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>)
 endif()
 
 # TC-P19: node-addon-api 路径直接取项目根 node_modules(不再执行 node 解析,
@@ -16,7 +16,7 @@ if(NOT EXISTS "${NODE_ADDON_API_DIR}/napi.h")
 endif()
 file(TO_CMAKE_PATH "${NODE_ADDON_API_DIR}" NODE_ADDON_API_DIR)
 
-add_library(tc_native SHARED tc_native.cc ${CMAKE_JS_SRC})
+add_library(tc_native SHARED tc_native.cc tc_native.rc ${CMAKE_JS_SRC})
 target_include_directories(tc_native PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
 target_link_libraries(tc_native PRIVATE ${CMAKE_JS_LIB})
 set_target_properties(tc_native PROPERTIES PREFIX "" SUFFIX ".node")

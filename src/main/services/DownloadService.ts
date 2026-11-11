@@ -1,11 +1,12 @@
 import path from 'path'
 import fs from 'fs'
-import { spawn, execSync, ChildProcess, StdioOptions } from 'child_process'
+import { spawn, ChildProcess, StdioOptions } from 'child_process'
 import net from 'net'
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { Db } from '../db'
 import WebSocket from 'ws'
 import crypto from 'crypto'
+import { WinNative } from '../utils/winNative'
 
 type TaskStatus = 'active' | 'waiting' | 'paused' | 'completed' | 'error'
 
@@ -105,7 +106,7 @@ export class DownloadService {
     }
     try {
       if (process.platform === 'win32') {
-        execSync(`taskkill /F /FI "PID eq ${lastPid}" /FI "IMAGENAME eq aria2c.exe" /T`, { windowsHide: true })
+        WinNative.killProcessByPid(lastPid, 'aria2c.exe', true)
       } else {
         process.kill(lastPid, 'SIGKILL')
       }

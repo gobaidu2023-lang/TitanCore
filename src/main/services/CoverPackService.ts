@@ -9,7 +9,7 @@ import { Db } from '../db';
 export class CoverPackService {
     private static coversDir: string;
     private static readonly COVER_EXTS = ['.webp', '.jpg', '.png'];
-    private static readonly COVER_SECRET = 'TitanV15_KimiFinal_2025';
+    private static readonly COVER_SECRET = process.env.TITAN_CLIENT_SECRET || 'TITAN_COMMUNITY_CLIENT_SECRET';
     private static pendingFetches = new Map<string, Promise<boolean>>();
     private static appIdCache = new Map<string, string>();
 
@@ -155,9 +155,10 @@ export class CoverPackService {
                 const timestamp = Math.floor(Date.now() / 1000);
                 const sign = crypto.createHmac('sha256', this.COVER_SECRET).update(`${normalizedId}:${timestamp}`).digest('hex');
 
-                const primaryBase = (Db.get<any>('app_seed_config')?.serverUrl || Db.get<any>('app_settings')?.serverUrl || (process.env.TITAN_NODE_2 || '')).replace(/\/$/, '');
-                const masterBase = (process.env.TITAN_NODE_2 || '');
-                const bases = primaryBase === masterBase ? [masterBase] : [primaryBase, masterBase];
+                const masterBase = (process.env.TITAN_NODE_2 || '').replace(/\/$/, '');
+                const primaryBase = (Db.get<any>('app_seed_config')?.serverUrl || Db.get<any>('app_settings')?.serverUrl || masterBase).replace(/\/$/, '');
+                const bases = Array.from(new Set([primaryBase, masterBase].filter(Boolean)));
+                if (bases.length === 0) return false;
 
                 for (const base of bases) {
                     try {

@@ -1,6 +1,6 @@
 {
   "name": "TitanCore",
-  "version": "2.1.2",
+  "version": "2.1.4",
   "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "vite",

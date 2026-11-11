@@ -138,6 +138,7 @@
     "STATUS_UNINSTALL_FAIL": "Uninstall failed: {msg}"
   },
   "discovery": {
+    "loading": "Loading...",
     "noDesc": "No description available.",
     "tabSteam": "Steam Games",
     "tabCollection": "Featured",
@@ -266,6 +267,7 @@
       "doneTitle": "Redeploy Complete"
     },
     "launch": {
+      "inGame": "In Game",
       "title": "Online Play Confirmation",
       "rule1": "1. Works only with friends using the same patch. Incompatible with official multiplayer.",
       "rule2": "2. Run one game at a time. Multi-launching can cause engine conflicts.",
@@ -1325,6 +1327,7 @@
   },
   "lang": {
     "zhCN": "中文",
+    "zhTW": "Traditional Chinese",
     "enUS": "English"
   },
   "type": {
@@ -1594,6 +1597,7 @@
     "loading": "Detecting accounts...",
     "emptyHint": "No Steam accounts found. Sign in to Steam with \"Remember me\" checked.",
     "activeBadge": "Active",
+    "current": "Current",
     "zeroSelectedWarn": "Isolation is on with 0 accounts checked. All accounts will be suspended.",
     "footerNote": "* Takes effect instantly via OST hot-reload, no restart required.",
     "saving": "Saving...",

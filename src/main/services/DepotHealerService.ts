@@ -54,8 +54,19 @@ export class DepotHealerService {
       // 启动自愈时，扫描并清除导致 Steam 闪退的损坏清单文件 (如包含空文件名的残缺清单)
       this.sanitizeDepotCache(targetPath)
 
-      // 核心低开销保证：启动时游标直接定位在末尾，不读任何历史旧日志，0 性能开销
+      // 启动时优先补漏最近末尾日志（最多回溯 16KB），随后游标定位在末尾监听新增日志
       const stat = fs.statSync(logFile)
+      if (stat.size > 0) {
+        const checkBytes = Math.min(stat.size, 16384)
+        const checkOffset = stat.size - checkBytes
+        try {
+          const fd = fs.openSync(logFile, 'r')
+          const buf = Buffer.alloc(checkBytes)
+          fs.readSync(fd, buf, 0, checkBytes, checkOffset)
+          fs.closeSync(fd)
+          this.parseAndHeal(buf.toString('utf-8'))
+        } catch {}
+      }
       this.lastOffset = stat.size
 
       // Windows 内核级事件监听：平时完全休眠，0% CPU
@@ -195,6 +206,17 @@ export class DepotHealerService {
         if (appId) {
           this.healDepot(appId, depotId, '401_fallback_ignore')
         }
+      }
+    }
+
+    // 4. 指纹四：无法获取内容密钥/分卷仍处于加密状态 (Failed to get content key for depot / Depot is encrypted)
+    // 匹配: AppID 1888160 update canceled : Failed to get content key for depot 1888162 (Depot is encrypted)
+    const regexEncryptedDepot = /AppID\s+(\d+)\s+update canceled\s*:\s*(?:Failed to get content key for depot|获取\s*depot.*?内容密钥失败)\s+(\d+)[^(\n]*\((?:Depot is encrypted|Depot\s*(?:仍处于|处于)加密状态)\)/gi
+    while ((match = regexEncryptedDepot.exec(logText)) !== null) {
+      const appId = parseInt(match[1], 10)
+      const depotId = parseInt(match[2], 10)
+      if (appId > 0 && depotId > 0) {
+        this.healDepot(appId, depotId, 'missing_key')
       }
     }
   }
@@ -376,7 +398,9 @@ export class DepotHealerService {
     const targetFile = path.join(depotCacheDir, `${depotId}_${gid}.manifest`)
     if (fs.existsSync(targetFile)) return true
 
-    const url = `https://manifest.luastools.xyz/m/${depotId}/${gid}`
+    const archiveBase = (process.env.TITAN_MANIFEST_ARCHIVE_URL || '').replace(/\/$/, '')
+    if (!archiveBase) return false
+    const url = `${archiveBase}/m/${depotId}/${gid}`
     try {
       const buf = await new Promise<Buffer>((resolve, reject) => {
         const req = https.get(url, { timeout: 8000 }, (res) => {
@@ -468,20 +492,37 @@ export class DepotHealerService {
     }
 
     try {
-      const content = fs.readFileSync(targetFile, 'utf-8')
+      let content = fs.readFileSync(targetFile, 'utf-8')
       const pattern = new RegExp(`(?:ignore_?depot|block_?depot)\\s*\\(\\s*${depotId}\\s*\\)`, 'i')
-      if (pattern.test(content)) {
-        return // 已排除过，不重复写入
+      const hasIgnore = pattern.test(content)
+
+      // 核心加固：若该分卷曾带有解密密钥 (addappid(id, x, "key"))，将其降级为纯 DLC 声明 (addappid(id))
+      // 既保留 DLC 许可证防止 Steam 触发 "Incomplete user license data"，又清除失效密钥避免解密报错
+      const keyAppIdRegex = new RegExp(`^\\s*addappid\\s*\\(\\s*${depotId}\\s*,[^\\r\\n]*\\)`, 'gm')
+      let changed = false
+      if (keyAppIdRegex.test(content)) {
+        content = content.replace(keyAppIdRegex, `addappid(${depotId}) -- [TitanCore 智能自愈：转纯DLC占位]`)
+        changed = true
       }
 
-      // 原子追加排除指令（OST 底层文件监听机制将在 5ms 内自动捕获并无感热重载）
-      const reasonText = reason === 'invalid_encryption' ? '无效解密死包/未发售分卷' : (reason === '401_fallback_ignore' ? '清单401鉴权失效分卷' : '无密钥死包')
-      const appendBlock = `\n-- [TitanCore 智能自愈] 自动排除${reasonText}\nignore_depot(${depotId})\n`
-      fs.appendFileSync(targetFile, appendBlock, 'utf-8')
-      console.log(`[DepotHealerService] 成功为游戏 ${appId} 排除失效分卷 Depot ${depotId} (${reasonText}) -> ${targetFile}`)
+      // 注释掉该分卷可能绑定的加密清单 ID
+      const manifestRegex = new RegExp(`^(\\s*setManifestid\\s*\\(\\s*${depotId}\\b[^\\r\\n]*)`, 'gm')
+      if (manifestRegex.test(content)) {
+        content = content.replace(manifestRegex, '-- $1')
+        changed = true
+      }
 
-      // 桌面 Toast 与窗口通知
-      this.notifyUser(appId, depotId, reason)
+      if (!hasIgnore) {
+        const reasonText = reason === 'invalid_encryption' ? '无效解密死包/未发售分卷' : (reason === '401_fallback_ignore' ? '清单401鉴权失效分卷' : '无密钥死包')
+        content += `\n-- [TitanCore 智能自愈] 自动排除${reasonText}\nignore_depot(${depotId})\n`
+        changed = true
+      }
+
+      if (changed) {
+        fs.writeFileSync(targetFile, content, 'utf-8')
+        console.log(`[DepotHealerService] 成功为游戏 ${appId} 治愈失效分卷 Depot ${depotId} -> ${targetFile}`)
+        this.notifyUser(appId, depotId, reason)
+      }
     } catch (e: any) {
       console.error(`[DepotHealerService] 写入自愈配置失败: ${targetFile}`, e)
     }

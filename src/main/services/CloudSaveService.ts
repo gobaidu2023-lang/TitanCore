@@ -10,6 +10,7 @@ import { CoverPackService } from './CoverPackService'
 import { Db } from '../db'
 import { ArchiveService } from '../utils/ArchiveService'
 import { Logger } from '../utils/logger'
+import { WinNative } from '../utils/winNative'
 
 const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -79,47 +80,27 @@ export class CloudSaveService {
     return true
   }
 
-  private static native: any = null
-  private static nativeTried = false
-
-  // TC-P13: 惰性加载原生插件(广播用; 缺失不致命)
-  private static loadNative(): any {
-    if (this.nativeTried) return this.native
-    this.nativeTried = true
-    const candidates = [
-      path.join(process.resourcesPath || '', 'bin', 'tc_native.node'),
-      path.join(path.dirname(process.execPath), 'resources', 'bin', 'tc_native.node')
-    ]
-    try { candidates.push(path.join(app.getAppPath(), 'native', 'build', 'Release', 'tc_native.node')) } catch { }
-    try { candidates.push(path.join(app.getAppPath(), 'build', 'native', 'Release', 'tc_native.node')) } catch { }  // TC-P17: add_subdirectory 产物位
-    try { candidates.push(path.join(app.getAppPath(), 'resources', 'bin', 'tc_native.node')) } catch { }  // TC-P17: 编译后自动复制位
-    for (const p of candidates) {
-      try { if (p && fs.existsSync(p)) { this.native = require(p); return this.native } } catch { }
-    }
-    return null
-  }
-
   // TC-P13: 广播环境变量变更(Explorer 新启动进程免重启生效; 主通路是 TC 自己注入 process.env)
   private static broadcastEnvChange(): void {
-    try { const n = this.loadNative(); if (n?.broadcastSettingChange) n.broadcastSettingChange() } catch { }
+    try { WinNative.broadcastSettingChange() } catch { }
   }
 
   // TC-P13: 写用户级 CR_STATE_DIR(注册表, 写一次永久生效) + 注入本进程 + 广播
   static writeCrStateDirEnv(value: string): boolean {
     process.env.CR_STATE_DIR = value
     try {
-      const { execFileSync } = require('node:child_process')
-      const sysRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows'
-      const regTarget = path.join(sysRoot, 'System32', 'reg.exe')
-      const regExe = fs.existsSync(regTarget) ? regTarget : 'reg'
-      execFileSync(regExe, ['add', 'HKCU\\Environment', '/v', 'CR_STATE_DIR', '/t', 'REG_SZ', '/d', value, '/f'], { timeout: 10000, windowsHide: true })
-      
+      const ok = WinNative.regWriteString('HKCU', 'Environment', 'CR_STATE_DIR', value)
+      if (!ok) {
+        console.error('[CloudSaveService] 用户级环境变量 CR_STATE_DIR 写入注册表失败，已保留当前进程内存值')
+        return false
+      }
+
       // 额外对齐登记 TitanCore 软件注册表（0 风险：InstallPath 与 Path 永久保持安装根目录，同时记录 OstDir 供 C++ 探针秒级识别）
       try {
         const tcRoot = path.dirname(value)
-        execFileSync(regExe, ['add', 'HKCU\\Software\\TitanCore', '/v', 'InstallPath', '/t', 'REG_SZ', '/d', tcRoot, '/f'], { timeout: 5000, windowsHide: true })
-        execFileSync(regExe, ['add', 'HKCU\\Software\\TitanCore', '/v', 'Path', '/t', 'REG_SZ', '/d', tcRoot, '/f'], { timeout: 5000, windowsHide: true })
-        execFileSync(regExe, ['add', 'HKCU\\Software\\TitanCore', '/v', 'OstDir', '/t', 'REG_SZ', '/d', value, '/f'], { timeout: 5000, windowsHide: true })
+        WinNative.regWriteString('HKCU', 'Software\\TitanCore', 'InstallPath', tcRoot)
+        WinNative.regWriteString('HKCU', 'Software\\TitanCore', 'Path', tcRoot)
+        WinNative.regWriteString('HKCU', 'Software\\TitanCore', 'OstDir', value)
       } catch {}
 
       this.broadcastEnvChange()
@@ -222,15 +203,11 @@ export class CloudSaveService {
     return path.join(steamPath, 'userdata', accountId, appId, 'remotecache.vdf')
   }
 
-  // 检查 Steam 客户端是否处于运行中（静默执行，无控制台黑框）
+  // 检查 Steam 客户端是否处于运行中（原生 Win32 快照探测，无子进程创建）
   private static isSteamRunning(): boolean {
     try {
       if (process.platform === 'win32') {
-        const output = execSync('tasklist /FI "IMAGENAME eq steam.exe" /NH', { 
-          encoding: 'utf-8',
-          windowsHide: true 
-        })
-        return output.toLowerCase().includes('steam.exe')
+        return WinNative.isProcessRunning('steam.exe')
       } else {
         const output = execSync('pgrep -x steam || true', { encoding: 'utf-8' })
         return output.trim().length > 0

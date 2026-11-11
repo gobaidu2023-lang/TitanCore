@@ -4,6 +4,9 @@
 !pragma warning disable 6020
 !pragma warning disable 7999
 !include MUI2.nsh
+!ifndef nsProcess::KillProcess
+    !include "nsProcess.nsh"
+!endif
 
 ManifestDPIAware true
 
@@ -35,11 +38,12 @@ ManifestDPIAware true
 ; 覆盖安装/原地升级前置排雷 (排空历史陈年缓存，杜绝敏感 DLL 备份报警)
 ; ==========================================
 !macro customInit
-    ; 1. 强杀可能残留的后台 TitanCore 进程，排空文件占用
-    nsExec::Exec 'taskkill /F /T /IM TitanCore.exe'
-    nsExec::Exec 'taskkill /F /T /IM TitanPatcher.exe'
-    nsExec::Exec 'taskkill /F /T /IM ArchiSteamFarm.exe'
-    nsExec::Exec 'taskkill /F /T /IM Titan-DlcTool.exe'
+    ; 1. 原生安全结束可能残留的后台 TitanCore 进程，排空文件占用 (使用 NSIS 原生 API 插件，杜绝外部 taskkill 命令行被杀软警报)
+    ${nsProcess::KillProcess} "TitanCore.exe" $R0
+    ${nsProcess::KillProcess} "TitanPatcher.exe" $R0
+    ${nsProcess::KillProcess} "ArchiSteamFarm.exe" $R0
+    ${nsProcess::KillProcess} "Titan-DlcTool.exe" $R0
+    ${nsProcess::Unload}
     Sleep 500
 
     SetShellVarContext current
@@ -154,11 +158,12 @@ FunctionEnd
 ; 卸载时强力排空: 仅在真正卸载(非覆盖升级 ${isUpdated})时清零数据与快捷方式
 ; ==========================================
 !macro customUnInstall
-    ; 1. 强杀 TitanCore 及其全部子进程树(/T)，排空句柄占用
-    nsExec::Exec 'taskkill /F /T /IM TitanCore.exe'
-    nsExec::Exec 'taskkill /F /T /IM TitanPatcher.exe'
-    nsExec::Exec 'taskkill /F /T /IM ArchiSteamFarm.exe'
-    nsExec::Exec 'taskkill /F /T /IM Titan-DlcTool.exe'
+    ; 1. 原生安全结束 TitanCore 及其全部子进程，排空句柄占用 (彻底替代 taskkill.exe)
+    ${nsProcess::KillProcess} "TitanCore.exe" $R0
+    ${nsProcess::KillProcess} "TitanPatcher.exe" $R0
+    ${nsProcess::KillProcess} "ArchiSteamFarm.exe" $R0
+    ${nsProcess::KillProcess} "Titan-DlcTool.exe" $R0
+    ${nsProcess::Unload}
     Sleep 500
 
     ${IfNot} ${isUpdated}

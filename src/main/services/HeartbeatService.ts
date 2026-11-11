@@ -3,6 +3,7 @@ import { BrowserWindow } from 'electron'
 import axios from 'axios'
 import { app } from 'electron'
 import * as os from 'os'
+import { WinNative } from '../utils/winNative'
 
 export class HeartbeatService {
   private static timer: NodeJS.Timeout | null = null
@@ -68,19 +69,16 @@ export class HeartbeatService {
       }
     } catch {}
 
-    // 2. 增强兜底：从 Windows 硬件驱动类注册表精准嗅探独显（无视 wmic 废弃与 Electron 图形沙箱限制）
+    // 2. 增强兜底：从 Windows 硬件驱动类注册表精准嗅探独显（原生 Win32 注册表读取，无子进程创建）
     if (gpuModel === 'Unknown GPU' || gpuModel.toLowerCase().includes('basic')) {
       try {
-        const { execSync } = require('child_process')
-        const fs = require('fs')
-        const path = require('path')
-        const sysRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows'
-        const regTarget = path.join(sysRoot, 'System32', 'reg.exe')
-        const regCmd = fs.existsSync(regTarget) ? `"${regTarget}"` : 'reg.exe'
-        const out = execSync(`${regCmd} query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}" /s /v DriverDesc`, { encoding: 'utf-8', timeout: 2000 })
-        const lines = out.split('\n').filter((l: string) => l.includes('DriverDesc'))
-        const candidateGpus = lines
-          .map((l: string) => l.split('REG_SZ')[1]?.trim())
+        const descs = WinNative.regQuerySubkeyStrings(
+          'HKLM',
+          'SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}',
+          'DriverDesc'
+        )
+        const candidateGpus = descs
+          .map(s => s.trim())
           .filter(Boolean)
           .filter((name: string) => !/virtual|mirror|remote|idd|oray/i.test(name))
 

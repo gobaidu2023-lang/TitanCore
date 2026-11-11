@@ -1,24 +1,9 @@
 // 文件名: src/main/services/SteamDetector.ts
-import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { access, constants } from 'node:fs/promises';
 import path from 'node:path';
 import { Db } from '../db'; // 🛡️ 引入本地持久化基座
-
-// 🛡️ 防御加固：优先绝对路径寻址系统级 reg.exe，彻底免疫用户环境变量丢失引发的 ENOENT
-const getRegExe = (): string => {
-  const sysRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
-  const target = path.join(sysRoot, 'System32', 'reg.exe');
-  return existsSync(target) ? target : 'reg.exe';
-};
-
-const run = (file: string, args: string[], timeout = 3000): Promise<string> =>
-  new Promise((resolve, reject) => {
-    execFile(file, args, { encoding: 'utf-8', timeout }, (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout);
-    });
-  });
+import { WinNative } from '../utils/winNative';
 
 export class SteamDetector {
   private static _p: string | null = null;
@@ -86,11 +71,8 @@ export class SteamDetector {
   }
 
   static async #fromProtocol(): Promise<string | null> {
-    const out = await run(
-      getRegExe(),
-      ['query', 'HKEY_CLASSES_ROOT\\steam\\shell\\open\\command', '/ve'],
-      2000
-    );
+    const out = WinNative.regReadString('HKCR', 'steam\\shell\\open\\command', '');
+    if (!out) return null;
 
     const quoted = out.match(/"([a-zA-Z]:\\[^"]+\.exe)"/i);
     if (quoted) return path.win32.dirname(quoted[1]);
@@ -102,14 +84,9 @@ export class SteamDetector {
   }
 
   static async #fromValve(): Promise<string | null> {
-    const out = await run(
-      getRegExe(),
-      ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'SteamPath'],
-      2000
-    );
-    const m = out.match(/SteamPath\s+REG_SZ\s+(.+)/i);
-    if (!m) return null;
-    return path.win32.normalize(m[1].trim().replace(/^"|"$/g, ''));
+    const val = WinNative.regReadString('HKCU', 'Software\\Valve\\Steam', 'SteamPath');
+    if (!val) return null;
+    return path.win32.normalize(val.trim().replace(/^"|"$/g, ''));
   }
 
   static async #fromAnchor(): Promise<string | null> {

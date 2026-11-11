@@ -138,6 +138,7 @@
     "STATUS_UNINSTALL_FAIL": "解除安裝失敗: {msg}"
   },
   "discovery": {
+    "loading": "載入中...",
     "noDesc": "該項目暫無詳細描述資訊。",
     "tabSteam": "Steam遊戲",
     "tabCollection": "精選專題",
@@ -266,6 +267,7 @@
       "doneTitle": "部署完成"
     },
     "launch": {
+      "inGame": "遊戲中",
       "title": "連線啟動確認",
       "rule1": "1. 僅支援同樣使用該入庫連線方式的 Steam 好友連線，不支援和正版玩家連線，不支援官方連線。",
       "rule2": "2. 請確保一次僅執行一款遊戲，多開會導致底層連線資料串線或引擎崩潰。",
@@ -1595,6 +1597,7 @@
     "loading": "正在讀取 Steam 本機登入憑據...",
     "emptyHint": "未在本機檢索到記住密碼的 Steam 帳號，請在 Steam 客戶端勾選「記住我」登入一次",
     "activeBadge": "當前活躍",
+    "current": "當前",
     "zeroSelectedWarn": "當前開啟了隔離但未勾選任何帳號。儲存後 OST 將對所有登入帳號執行全量休眠阻斷。",
     "footerNote": "* 協議經由 OST 執行階段熱監聽接管，即刻生效，無需重啟客戶端",
     "saving": "正在寫入...",

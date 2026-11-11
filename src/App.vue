@@ -523,6 +523,9 @@ const togglePerformanceMode = async () => {
   performanceMode.value = !performanceMode.value
   document.documentElement.classList.toggle('performance-mode', performanceMode.value)
   if (performanceMode.value) cleanupAudioSync()
+  try {
+    await window.electron.invoke('sys:set-config', 'performanceMode', performanceMode.value)
+  } catch { /* 持久化失败仅影响重启后 */ }
 }
 
 // ======================= 工业级真实音频物理映射 =======================
@@ -1059,10 +1062,16 @@ onUnmounted(() => {
 }
 
 /* ========== 性能模式降级与穿透规则 ========== */
-.performance-mode .animate-fade-in, 
-.performance-mode .animate-fade-in-up,
-.performance-mode .animate-scale-in,
-.performance-mode .welcome-modal-content { 
+html.performance-mode .animate-fade-in, 
+html.performance-mode .animate-fade-in-up,
+html.performance-mode .animate-scale-in,
+html.performance-mode .animate-scale-up,
+html.performance-mode .animate-modal-scale,
+html.performance-mode .animate-pop-in,
+html.performance-mode .animate-slide-in-left,
+html.performance-mode .animate-slide-in-up,
+html.performance-mode .tc-card-entry,
+html.performance-mode .welcome-modal-content { 
   animation: none !important; 
   opacity: 1 !important; 
   transform: none !important; 
@@ -1090,7 +1099,8 @@ onUnmounted(() => {
   opacity: 0.4 !important;
 }
 
-.performance-mode [class*="backdrop-blur"] {
+.performance-mode [class*="backdrop-blur"],
+.performance-mode [style*="backdrop-filter"] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -1107,9 +1117,11 @@ onUnmounted(() => {
   opacity: 0 !important;
 }
 
-.performance-mode .search-enter,
-.performance-mode .tc-warp-enter {
+html.performance-mode .search-enter,
+html.performance-mode .tc-warp-enter {
   animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
 .performance-mode .search-exit,
 .performance-mode .tc-warp-exit {

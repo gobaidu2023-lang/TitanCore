@@ -19,7 +19,7 @@ export class SyncManager {
     private static isSyncing = false;
     private static lastSyncTime = 0;
     private static eventEmitter = new EventEmitter();
-    private static readonly CLIENT_SECRET = 'TitanV15_KimiFinal_2025';
+    private static readonly CLIENT_SECRET = process.env.TITAN_CLIENT_SECRET || 'TITAN_COMMUNITY_CLIENT_SECRET';
 
     public static get isSyncingState(): boolean {
         return this.isSyncing;

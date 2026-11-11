@@ -138,6 +138,7 @@
     "STATUS_UNINSTALL_FAIL": "卸载失败: {msg}"
   },
   "discovery": {
+    "loading": "加载中...",
     "noDesc": "该资产暂无详细描述信息。",
     "tabSteam": "Steam游戏",
     "tabCollection": "精选专题",
@@ -266,6 +267,7 @@
       "doneTitle": "部署完成"
     },
     "launch": {
+      "inGame": "游戏中",
       "title": "联机启动确认",
       "rule1": "1. 仅支持同样使用该入库联机方式的 Steam 好友联机，<span style=\"color:#ff4444;\">不支持</span>和正版玩家联机，不支持官方联机。",
       "rule2": "2. 请确保一次仅运行一款游戏，多开会导致底层联机数据串线或引擎崩溃。",
@@ -1325,6 +1327,7 @@
   },
   "lang": {
     "zhCN": "中文",
+    "zhTW": "繁体中文",
     "enUS": "English"
   },
   "type": {
@@ -1594,6 +1597,7 @@
     "loading": "正在读取 Steam 本地登录凭据...",
     "emptyHint": "未在本地检索到记住密码的 Steam 账号，请在 Steam 客户端勾选“记住我”登录一次",
     "activeBadge": "当前活跃",
+    "current": "当前",
     "zeroSelectedWarn": "当前开启了隔离但未勾选任何账号。保存后 OST 将对所有登录账号执行全量休眠阻断。",
     "footerNote": "* 协议经由 OST 运行时热监听接管，即刻生效，无需重启客户端",
     "saving": "正在写入...",

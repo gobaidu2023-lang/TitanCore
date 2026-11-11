@@ -1,13 +1,12 @@
 // 文件路径: src/main/services/ShareGateService.ts
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
-import { execFile } from 'node:child_process'
 import { Db } from '../db'
 import { titanFetch } from '../TitanNet'
 import { CloudSaveService } from './CloudSaveService'
 import { SteamDetector } from './SteamDetector'
 import { SteamLaunchService } from './SteamLaunchService'
+import { WinNative } from '../utils/winNative'
 
 export interface ShareGateSlot {
   slot_index: number
@@ -49,31 +48,10 @@ export interface ShareGateAuthPayload {
   remaining?: number
 }
 
-// 构造原子导入的 .reg 文件内容 (Windows Registry Editor Version 5.00 规范)
-function buildRegContent(appId: string, sourceSteamId: string, appTicketHex: string, eticketHex?: string | null): string {
-  const formatHex = (hex: string) => hex.match(/.{1,2}/g)?.join(',') || ''
-
-  const appTicketBytes = formatHex(appTicketHex)
-  // 单票: "ETicket"=- (系统原生物理清除旧键)；双票: "ETicket"=hex:... (覆盖写入)
-  const eticketLine = (eticketHex && eticketHex.trim().length > 0)
-    ? `"ETicket"=hex:${formatHex(eticketHex)}`
-    : `"ETicket"=-`
-
-  // 必须双反斜杠 \\ (JS 模板字符串转义后才是单个反斜杠)
-  return [
-    'Windows Registry Editor Version 5.00',
-    '',
-    `[HKEY_CURRENT_USER\\Software\\Valve\\Steam\\Apps\\${appId}]`,
-    `"SteamID"="${sourceSteamId}"`,
-    `"AppTicket"=hex:${appTicketBytes}`,
-    eticketLine,
-    ''
-  ].join('\r\n')
-}
-
 export class ShareGateService {
   private static isAuthorizing = false
   private static authLockTimestamp = 0
+  private static purgingSet = new Set<string>()
 
   private static getServerUrl(): string {
     return Db.get<any>('app_seed_config')?.serverUrl || ''
@@ -98,6 +76,9 @@ export class ShareGateService {
         return await this.getLocalSteamAccounts()
       } else if (action === 'ticket-records') {
         return this.getTicketRecords()
+      } else if (action === 'purge-poison-cache') {
+        const res = await this.purgeDenuvoPoisonCache(payload.app_id)
+        return { code: 200, msg: `已排查并清理 ${res.purgedFiles.length} 个失效凭证文件`, data: res }
       }
       return { code: 400, msg: `未知操作指令: ${action}` }
     } catch (err: any) {
@@ -188,8 +169,8 @@ export class ShareGateService {
 
   // 执行授权提取与本地注册表原子写入
   static async authorize(appId: string, targetSteamId64: string): Promise<{ code: number; msg?: string; data?: any }> {
-    // 1. 参数强断言 (Fail-Fast，不清洗直报)
-    const strAppId = String(appId || '').trim()
+    // 1. 参数强断言 (Fail-Fast，兼容处理资源 ID 前缀)
+    const strAppId = String(appId || '').replace(/^steam_gate_/, '').trim()
     const strSteamId = String(targetSteamId64 || '').trim()
 
     if (!/^\d+$/.test(strAppId)) {
@@ -251,34 +232,26 @@ export class ShareGateService {
         return { code: 500, msg: '后端下发的加密票据 (ETicket) 校验不合格' }
       }
 
-      // 5. 构造临时 .reg 文件
-      const regContent = buildRegContent(strAppId, String(source_steamid64), appticket_hex, eticket_hex)
-      const tempRegPath = path.join(os.tmpdir(), `tc_share_${strAppId}_${Date.now()}.reg`)
+      // 4.5 前置主动排毒：仅在申领新凭据入库时，清除历史损坏的旧许可证，确保后续启动直接生成全新健康许可证
+      let purgedCount = 0
+      try {
+        const purgeRes = await this.purgeDenuvoPoisonCache(strAppId)
+        purgedCount = purgeRes.purgedFiles.length
+      } catch (purgeErr) {
+        console.warn('[ShareGateService] 申领前置排毒告警:', purgeErr)
+      }
 
-      await fs.promises.writeFile(tempRegPath, regContent, 'utf8')
+      // 5. 原生 Win32 API 直接写入 Steam 应用注册表（零临时文件、零 reg.exe 子进程）
+      const appRegKey = `Software\\Valve\\Steam\\Apps\\${strAppId}`
+      const okSteamId = WinNative.regWriteString('HKCU', appRegKey, 'SteamID', String(source_steamid64))
+      const okAppTicket = WinNative.regWriteBinary('HKCU', appRegKey, 'AppTicket', Buffer.from(appticket_hex, 'hex'))
+      const okETicket = (eticket_hex && eticket_hex.trim().length > 0)
+        ? WinNative.regWriteBinary('HKCU', appRegKey, 'ETicket', Buffer.from(eticket_hex.trim(), 'hex'))
+        : WinNative.regDeleteValue('HKCU', appRegKey, 'ETicket')
 
-      // 6. 原子导入注册表并安全清理临时文件 (统一在 finish 闭环)
-      const importSuccess = await new Promise<boolean>((resolve) => {
-        execFile('reg.exe', ['import', tempRegPath], { windowsHide: true, timeout: 5000 }, (error) => {
-          // 清理临时文件，容错重试
-          try {
-            if (fs.existsSync(tempRegPath)) {
-              fs.rmSync(tempRegPath, { force: true, maxRetries: 3, retryDelay: 100 })
-            }
-          } catch (e) {
-            console.warn('[ShareGateService] 清理临时 .reg 文件告警:', e)
-          }
-
-          if (error) {
-            console.error('[ShareGateService] reg.exe import 失败:', error)
-            resolve(false)
-          } else {
-            resolve(true)
-          }
-        })
-      })
-
+      const importSuccess = okSteamId && okAppTicket && okETicket
       if (!importSuccess) {
+        console.error('[ShareGateService] 原生写入 Steam 注册表失败', { okSteamId, okAppTicket, okETicket })
         return { code: 500, msg: '写入本地 Steam 注册表失败，请检查杀毒软件权限拦截' }
       }
 
@@ -299,7 +272,8 @@ export class ShareGateService {
           app_id: strAppId,
           share_type: json.data.share_type || 'exclusive',
           quota_remaining: json.data.quota_remaining,
-          remaining: remaining !== undefined ? remaining : 4
+          remaining: remaining !== undefined ? remaining : 4,
+          purged_cache_count: purgedCount
         }
       }
     } catch (err: any) {
@@ -350,6 +324,187 @@ export class ShareGateService {
     } catch (e: any) {
       console.warn('[ShareGateService] 读取本地 Steam 账号失败:', e)
       return { code: 200, data: { current: null, accounts: [] } }
+    }
+  }
+
+  /**
+   * 定位指定 AppID 对应游戏的本地安装根目录
+   */
+  static findGameInstallDir(steamPath: string, appId: string): string | null {
+    const cleanAppId = String(appId || '').replace(/^steam_gate_/, '').trim()
+    if (!steamPath || !cleanAppId || !/^\d+$/.test(cleanAppId)) return null
+
+    try {
+      const libraryRoots: string[] = [steamPath]
+      const vdfPath = path.join(steamPath, 'steamapps', 'libraryfolders.vdf')
+      if (fs.existsSync(vdfPath)) {
+        const content = fs.readFileSync(vdfPath, 'utf-8')
+        const matches = content.matchAll(/"path"\s+"([^"]+)"/g)
+        for (const m of matches) {
+          const raw = m[1].replace(/\\\\/g, '\\').trim()
+          if (raw && !libraryRoots.some(r => r.toLowerCase() === raw.toLowerCase())) {
+            libraryRoots.push(raw)
+          }
+        }
+      }
+
+      for (const lib of libraryRoots) {
+        const acfPath = path.join(lib, 'steamapps', `appmanifest_${cleanAppId}.acf`)
+        if (fs.existsSync(acfPath)) {
+          const acfContent = fs.readFileSync(acfPath, 'utf-8')
+          const m = acfContent.match(/"installdir"\s+"([^"]+)"/)
+          if (m && m[1]) {
+            const candidate = path.join(lib, 'steamapps', 'common', m[1])
+            if (fs.existsSync(candidate)) {
+              return candidate
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[ShareGateService] 定位游戏安装目录异常:', e)
+    }
+    return null
+  }
+
+  /**
+   * 前置主动清理 Denuvo 离线毒缓存（dbdata 等损坏的离线许可证文件）
+   * 彻底解决由于 Steam 账号撕裂残留导致的 88500012 错误
+   * 零感知、毫秒级靶向定向排毒，绝不影响玩家存档与系统核心文件
+   */
+  static async purgeDenuvoPoisonCache(appId: string): Promise<{ success: boolean; purgedFiles: string[] }> {
+    const purgedFiles: string[] = []
+    const cleanAppId = String(appId || '').replace(/^steam_gate_/, '').trim()
+    if (!cleanAppId || !/^\d+$/.test(cleanAppId)) return { success: false, purgedFiles }
+
+    // 幂等防重入并发锁
+    if (this.purgingSet.has(cleanAppId)) {
+      return { success: true, purgedFiles: [] }
+    }
+    this.purgingSet.add(cleanAppId)
+
+    try {
+      const detectRes = await SteamDetector.detect()
+      const steamPath = detectRes?.path
+      const installDir = steamPath ? this.findGameInstallDir(steamPath, cleanAppId) : null
+
+      const POISON_FILE_REGEX = /^(dbdata(\..+)?|.*\.dbdata|denuvo_.*\.dat|steam_authe(\..+)?)$/i
+      const SKIP_DIRS = new Set([
+        'content', 'data', 'paks', 'assets', 'dlc', 'mods',
+        '.git', 'shadercache', 'movies', 'sound', 'audio',
+        'video', 'media', 'textures', 'ui'
+      ])
+
+      // 1. 靶向收集候选检查目录（根目录 + 二进制程序可能所在的一/二/三级目录，跳过资产大目录）
+      if (installDir && fs.existsSync(installDir)) {
+        const targetDirs = new Set<string>()
+        targetDirs.add(installDir)
+
+        const collectBinaryDirs = (currentDir: string, depth = 0) => {
+          if (depth > 2 || !fs.existsSync(currentDir)) return
+          try {
+            const subEntries = fs.readdirSync(currentDir, { withFileTypes: true })
+            for (const sub of subEntries) {
+              if (sub.isDirectory() && !SKIP_DIRS.has(sub.name.toLowerCase())) {
+                const subPath = path.join(currentDir, sub.name)
+                targetDirs.add(subPath)
+                collectBinaryDirs(subPath, depth + 1)
+              }
+            }
+          } catch {}
+        }
+
+        collectBinaryDirs(installDir, 0)
+
+        // 对收集到的可疑程序目录进行定向排毒
+        for (const dir of targetDirs) {
+          try {
+            const files = fs.readdirSync(dir, { withFileTypes: true })
+            for (const file of files) {
+              if (file.isFile() && POISON_FILE_REGEX.test(file.name)) {
+                const fullPath = path.join(dir, file.name)
+                try {
+                  fs.unlinkSync(fullPath)
+                  purgedFiles.push(fullPath)
+                  console.log(`[ShareGateService] 前置已自动清除 Denuvo 毒缓存: ${fullPath}`)
+                } catch (delErr) {
+                  console.warn(`[ShareGateService] 清理文件失败 ${fullPath}:`, delErr)
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+
+      // 2. 扫描 %LOCALAPPDATA% 目录下当前游戏或 AppID 绑定的专有缓存
+      const localAppData = process.env.LOCALAPPDATA
+      if (localAppData) {
+        // A. %LOCALAPPDATA%\Denuvo 目录（严格仅清理包含 cleanAppId 的专有文件）
+        const localDenuvoDir = path.join(localAppData, 'Denuvo')
+        if (fs.existsSync(localDenuvoDir)) {
+          try {
+            const entries = fs.readdirSync(localDenuvoDir, { withFileTypes: true })
+            for (const ent of entries) {
+              if (ent.name.includes(cleanAppId)) {
+                const p = path.join(localDenuvoDir, ent.name)
+                try {
+                  fs.rmSync(p, { recursive: true, force: true })
+                  purgedFiles.push(p)
+                } catch {}
+              }
+            }
+          } catch {}
+        }
+
+        // B. 游戏专属目录 %LOCALAPPDATA%\<GameInstallDir>
+        if (installDir) {
+          const gameBaseName = path.basename(installDir)
+          if (gameBaseName) {
+            const localGameDir = path.join(localAppData, gameBaseName)
+            if (fs.existsSync(localGameDir)) {
+              try {
+                const entries = fs.readdirSync(localGameDir, { withFileTypes: true })
+                for (const ent of entries) {
+                  if (ent.isFile() && POISON_FILE_REGEX.test(ent.name)) {
+                    const p = path.join(localGameDir, ent.name)
+                    try {
+                      fs.unlinkSync(p)
+                      purgedFiles.push(p)
+                    } catch {}
+                  }
+                }
+              } catch {}
+            }
+          }
+        }
+      }
+
+      // 3. 扫描 %PROGRAMDATA%\Denuvo 目录（严格按照 cleanAppId 隔离过滤，杜绝误删其他合法正版游戏令牌）
+      const programData = process.env.ProgramData || process.env.ALLUSERSPROFILE
+      if (programData) {
+        const progDenuvoDir = path.join(programData, 'Denuvo')
+        if (fs.existsSync(progDenuvoDir)) {
+          try {
+            const entries = fs.readdirSync(progDenuvoDir, { withFileTypes: true })
+            for (const ent of entries) {
+              if (ent.name.includes(cleanAppId)) {
+                const p = path.join(progDenuvoDir, ent.name)
+                try {
+                  fs.rmSync(p, { recursive: true, force: true })
+                  purgedFiles.push(p)
+                } catch {}
+              }
+            }
+          } catch {}
+        }
+      }
+
+      return { success: true, purgedFiles }
+    } catch (err: any) {
+      console.warn('[ShareGateService] 前置排毒流程异常:', err?.message)
+      return { success: false, purgedFiles }
+    } finally {
+      this.purgingSet.delete(cleanAppId)
     }
   }
 }

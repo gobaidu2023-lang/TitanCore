@@ -1,8 +1,6 @@
 // 文件名: src/main/services/ModeSwitchService.ts
 // TC 侧适配: 纯净/经典模式切换服务
 // 规范: 彻底解耦 CR 依赖、复用 deploy 安装语义纯覆盖安装、加固 dev 开发环境回退
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Db } from '../db'
@@ -11,8 +9,8 @@ import { SteamDetector } from './SteamDetector'
 import { PatternSyncService } from './PatternSyncService'
 import { Logger } from '../utils/logger'
 import { CloudSaveService } from './CloudSaveService'
+import { WinNative } from '../utils/winNative'
 
-const execFileAsync = promisify(execFile)
 const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
 export type OstMode = 'pure' | 'classic'
@@ -299,7 +297,11 @@ export class ModeSwitchService {
   static getMode(): OstMode {
     const recorded = Db.get<string>(this.MODE_KEY)
     if (recorded === 'pure' || recorded === 'classic') return recorded
-    return fs.existsSync(path.join(this.ostDir, 'OpenSteamTool.dll')) ? 'pure' : 'classic'
+
+    // 若数据库无记录（全新安装 / 初次启动）：
+    // 规范：全新客户端默认基线一律为经典模式 (Classic)，并持久化至本地数据库，杜绝悬空与误判
+    Db.set(this.MODE_KEY, 'classic')
+    return 'classic'
   }
 
   static getActiveRoot(steamPath: string): string {
@@ -317,8 +319,7 @@ export class ModeSwitchService {
   // ============ Steam 关停阶梯 ============
   private static async isSteamRunning(): Promise<boolean> {
     try {
-      const { stdout } = await execFileAsync('tasklist', ['/FI', 'IMAGENAME eq steam.exe', '/FO', 'CSV', '/NH'], { encoding: 'utf-8', timeout: 5000 })
-      return stdout.toLowerCase().includes('steam.exe')
+      return WinNative.isProcessRunning('steam.exe')
     } catch {
       return false
     }
@@ -326,10 +327,7 @@ export class ModeSwitchService {
 
   static async ensureSteamDead(): Promise<void> {
     const wasRunning = await this.isSteamRunning()
-    try { await execFileAsync('taskkill', ['/F', '/T', '/IM', 'steam.exe'], { timeout: 5000 }) } catch { }
-    try { await execFileAsync('taskkill', ['/F', '/IM', 'steamwebhelper.exe'], { timeout: 3000 }) } catch { }
-    try { await execFileAsync('taskkill', ['/F', '/IM', 'crashhandler64.exe'], { timeout: 3000 }) } catch { }
-    try { await execFileAsync('taskkill', ['/F', '/IM', 'crashhandler.exe'], { timeout: 3000 }) } catch { }
+    WinNative.killProcesses(['steam.exe', 'steamwebhelper.exe', 'crashhandler64.exe', 'crashhandler.exe'], true)
     if (wasRunning) {
       const deadline = Date.now() + 5000
       while (Date.now() < deadline) {
@@ -399,8 +397,11 @@ export class ModeSwitchService {
     try {
       const det = await SteamDetector.detect()
       const steamPath = det.path
+      if (!steamPath) {
         Logger.error('ModeSwitchService', '模式切换失败: 未检测到 Steam 安装路径')
-      if (!steamPath) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'STEAM_NOT_FOUND' } }
+        Db.set(this.MODE_KEY, current)
+        return { success: false, mode: current, error: 'STEAM_NOT_FOUND' }
+      }
 
       await this.ensureSteamDead()
 

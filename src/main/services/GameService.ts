@@ -1,13 +1,14 @@
 import { ipcMain, BrowserWindow, app } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import { Db } from '../db';
 import { DownloadService } from './DownloadService';
 import { SecurityService } from './SecurityService';
 import { titanFetch } from '../TitanNet';
 import axios from 'axios';
 import { ArchiveService } from '../utils/ArchiveService';
+import { WinNative } from '../utils/winNative';
 
 // ========== 路径约定 ==========
 export const GAMES_ROOT = app.isPackaged
@@ -93,7 +94,7 @@ async function doInstall(appid: number, meta: any) {
 
   // R67: Steam 式更新语义 — 用户点更新即明确意图, 先强杀游戏 exe 再覆盖安装
   if (meta?.exe_name) {
-    try { spawn('taskkill', ['/F', '/IM', String(meta.exe_name), '/T'], { windowsHide: true }); } catch {}
+    try { WinNative.killProcesses([path.basename(String(meta.exe_name))], true); } catch {}
   }
 
   const appDir = path.join(GAMES_ROOT, String(appid));
@@ -240,19 +241,13 @@ export function registerGameService() {
     const baseExe = exeName ? path.basename(String(exeName)) : '';
     if (baseExe) {
       try {
-        const list = execSync('tasklist', { windowsHide: true, timeout: 5000 }).toString();
-        const upperExe = baseExe.toUpperCase();
-        const hit = list.split(/\r?\n/).some(l => {
-          const line = l.trim().toUpperCase();
-          return line.startsWith(upperExe + ' ') || line === upperExe;
-        });
-        if (hit) return { success: false, error: 'ERR_GAME_RUNNING' };
+        if (WinNative.isProcessRunning(baseExe)) return { success: false, error: 'ERR_GAME_RUNNING' };
       } catch {}
     }
     const appDir = path.join(GAMES_ROOT, String(appid));
     if (baseExe) {
       try {
-        spawn('taskkill', ['/F', '/IM', baseExe, '/T'], { windowsHide: true });
+        WinNative.killProcesses([baseExe], true);
       } catch {}
     }
     if (fs.existsSync(appDir)) fs.rmSync(appDir, { recursive: true, force: true });
