@@ -351,11 +351,11 @@
                     </div>
 
                     <div 
-                      class="text-sm leading-relaxed p-4 rounded-lg border max-h-[140px] overflow-y-auto custom-scrollbar"
+                      class="text-sm leading-relaxed p-4 rounded-lg border max-h-[180px] overflow-y-auto custom-scrollbar break-words"
                       :class="currentTheme === 'anime' ? 'bg-white border-rose-200 text-rose-800' : 'bg-black/40 border-rose-500/20 text-rose-200/90'"
                     >
                       {{ lastErrorLog || t('detail.unknownComm') }}
-                      <div v-if="lastErrorCode" class="font-mono text-xs mt-1.5" :class="currentTheme === 'anime' ? 'text-rose-600' : 'text-rose-400/60'">CODE: {{ lastErrorCode }}</div>
+                      <div v-if="lastErrorCode" class="font-mono text-xs mt-1.5 break-all" :class="currentTheme === 'anime' ? 'text-rose-600' : 'text-rose-400/60'">CODE: {{ lastErrorCode }}</div>
                     </div>
 
                     <div class="flex gap-2.5">
@@ -830,9 +830,35 @@ async function handleDeploy() {
     } else {
       const err = String(res?.msg || 'ERR_DEPLOY_UNKNOWN')
       const errUpper = err.toUpperCase()
-      lastErrorCode.value = errUpper.slice(0, 30)
+      const errCodeHead = (errUpper.split(':')[0] || errUpper).trim()
+      lastErrorCode.value = errCodeHead.slice(0, 40)
+      rawLogsHistory.value.push({ ts: new Date().toLocaleTimeString(), msg: err, type: 'error' })
 
-      if (errUpper.includes('RESOURCE_NOT_FOUND') || errUpper.includes('404')) {
+      const DIRECT_DEPLOY_CODES = new Set([
+        'ERR_RACE_ALL_FAILED',
+        'ERR_UNKNOWN_DEPLOY',
+        'ERR_UNZIP_EXIT',
+        'ERR_INVALID_ARCHIVE',
+        'ERR_INVALID_ZIP_HEADER',
+        'ERR_SHA256_MISMATCH',
+        'ERR_SIZE_TOO_SMALL',
+        'ERR_DIR_PERMISSION',
+        'ERR_STEAM_LOCKING',
+        'STEAM_STILL_RUNNING',
+        'TOOLS_PULL_INCOMPLETE',
+        'DEPLOY_IN_PROGRESS',
+        'MODE_SWITCHING',
+        'ERR_NO_TOOL_NODE',
+        'ERR_NO_NODE',
+        'ERR_NO_URLS',
+        'ERR_ALL_NODES_DOWN',
+        'ERR_STEAM_MISSING',
+        'ERR_LOCAL_COMPONENT_MISSING'
+      ])
+
+      if (DIRECT_DEPLOY_CODES.has(errCodeHead)) {
+        lastErrorLog.value = t('detail.logDeployErr', { err })
+      } else if (errUpper.includes('RESOURCE_NOT_FOUND') || errUpper.includes('404')) {
         lastErrorLog.value = t('detail.logNoStock')
       } else if (errUpper.includes('RESTOCKING') || errUpper.includes('503')) {
         lastErrorLog.value = t('detail.logRestocking')

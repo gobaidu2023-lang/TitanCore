@@ -8,6 +8,7 @@ import axios from 'axios'
 import { app } from 'electron'
 import { Db } from '../db'
 import { DownloadService } from '../services/DownloadService'
+import { ArchiveService } from './ArchiveService'
 
 export interface RaceOptions {
   destPath: string            // 最终落盘绝对路径
@@ -28,55 +29,95 @@ export class RacingDownloader {
     return p
   }
 
+  /**
+   * 清理历史会话遗留的过期临时目录（如异常退出或文件锁导致的 race_s_* / race_l_* / deploy_*）
+   */
+  static cleanupStaleTempDirs(maxAgeMs = 10 * 60 * 1000): void {
+    const now = Date.now()
+    const scanAndClean = (baseDir: string, prefixes: string[]) => {
+      try {
+        if (!fs.existsSync(baseDir)) return
+        for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
+          if (!entry.isDirectory()) continue
+          if (!prefixes.some(p => entry.name.startsWith(p))) continue
+          const full = path.join(baseDir, entry.name)
+          try {
+            const st = fs.statSync(full)
+            if (now - st.mtimeMs >= maxAgeMs) {
+              fs.rmSync(full, { recursive: true, force: true })
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    const racingRoot = this.TEMP_ROOT
+    scanAndClean(racingRoot, ['race_s_', 'race_l_'])
+    scanAndClean(path.dirname(racingRoot), ['deploy_'])
+  }
+
   // ================= 方案 A：小文件全量竞速（适合清单、补丁、小配置 < 30MB） =================
   static async raceSmallFile(urls: string[], options: RaceOptions): Promise<string> {
     if (!urls || urls.length === 0) throw new Error('ERR_NO_URLS')
-    if (urls.length === 1) return this.downloadDirectStream(urls[0], options)
 
     const raceId = `race_s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     const raceDir = path.join(this.TEMP_ROOT, raceId)
     fs.mkdirSync(raceDir, { recursive: true })
 
-    const controllers = urls.map(() => new AbortController())
-    let lastError = ''
+    const maxAttempts = 2
+    let lastAttemptErrors: string[] = []
 
-    const raceOne = async (url: string, index: number): Promise<string> => {
-      const tmpPath = path.join(raceDir, `part_${index}.tmp`)
-      try {
-        await this.streamToFile(url, tmpPath, controllers[index].signal)
-        if (options.destPath.endsWith('.zip')) {
-          this.assertZipHeader(tmpPath)
+    try {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const controllers = urls.map(() => new AbortController())
+        const mirrorErrors = new Array<string>(urls.length).fill('')
+        let attemptTimedOut = false
+        const attemptTimer = setTimeout(() => {
+          attemptTimedOut = true
+          controllers.forEach(c => c.abort())
+        }, 60000)
+
+        const raceOne = async (url: string, index: number): Promise<string> => {
+          const tmpPath = path.join(raceDir, `a${attempt}_part_${index}.tmp`)
+          try {
+            await this.streamToFile(url, tmpPath, controllers[index].signal)
+            if (controllers[index].signal.aborted) throw new Error('ABORTED')
+            await this.validateSmallFile(tmpPath, options)
+            if (controllers[index].signal.aborted) throw new Error('ABORTED')
+            return tmpPath
+          } catch (err: any) {
+            const canceledByDeadline = attemptTimedOut && (err?.code === 'ERR_CANCELED' || err?.message === 'ABORTED')
+            mirrorErrors[index] = `#${index + 1}:${canceledByDeadline ? 'TIMEOUT' : this.formatMirrorError(err)}`
+            throw err
+          }
         }
-        if (controllers[index].signal.aborted) throw new Error('ABORTED')
-        return tmpPath
-      } catch (err: any) {
-        lastError = err?.message || 'NET_ERROR'
-        throw err
-      }
-    }
 
-    const raceTasks = urls.map((u, i) => raceOne(u, i))
-    let winnerTmp = ''
-    try {
-      winnerTmp = await Promise.any(raceTasks)
-    } catch {
-      throw new Error(`ERR_RACE_ALL_FAILED: ${lastError}`)
-    } finally {
-      controllers.forEach(c => c.abort())
-      // 关键：等待所有竞速任务分支完全退出，确保各分支流与文件句柄彻底释放
-      await Promise.allSettled(raceTasks)
-    }
+        const raceTasks = urls.map((u, i) => raceOne(u, i))
+        let winnerTmp = ''
+        try {
+          winnerTmp = await Promise.any(raceTasks)
+        } catch {
+          lastAttemptErrors = mirrorErrors.filter(Boolean)
+          if (attempt < maxAttempts) {
+            await new Promise(r => setTimeout(r, 600))
+            continue
+          }
+          const summary = lastAttemptErrors.length > 0 ? lastAttemptErrors.join(', ') : 'UNKNOWN'
+          throw new Error(`ERR_RACE_ALL_FAILED:${summary}`)
+        } finally {
+          clearTimeout(attemptTimer)
+          controllers.forEach(c => c.abort())
+          // 关键：等待所有竞速任务分支完全退出，确保各分支流与文件句柄彻底释放
+          await Promise.allSettled(raceTasks)
+        }
 
-    try {
-      if (options.expectedSha256 && options.expectedSha256.trim()) {
-        await this.verifySha256(winnerTmp, options.expectedSha256)
+        await this.moveFileWithRetry(winnerTmp, options.destPath)
+        return options.destPath
       }
-      fs.mkdirSync(path.dirname(options.destPath), { recursive: true })
-      if (fs.existsSync(options.destPath)) fs.unlinkSync(options.destPath)
-      fs.renameSync(winnerTmp, options.destPath)
-      return options.destPath
+
+      throw new Error(`ERR_RACE_ALL_FAILED:${lastAttemptErrors.join(', ') || 'UNKNOWN'}`)
     } finally {
-      await this.rmWithRetry(raceDir, 3)
+      await this.rmWithRetry(raceDir, 5)
     }
   }
 
@@ -173,6 +214,7 @@ export class RacingDownloader {
       for (const gid of gids) {
         await DownloadService.removeTask(gid).catch(() => {})
       }
+      await new Promise(r => setTimeout(r, 200))
       await this.rmWithRetry(raceDir, 5)
     }
   }
@@ -208,13 +250,53 @@ export class RacingDownloader {
     }
   }
 
+  private static async validateSmallFile(tmpPath: string, options: RaceOptions): Promise<void> {
+    if (options.destPath.toLowerCase().endsWith('.zip')) {
+      this.assertZipHeader(tmpPath)
+      const archiveOk = await ArchiveService.test(tmpPath)
+      if (!archiveOk) throw new Error('ERR_INVALID_ARCHIVE')
+    }
+    if (options.expectedSha256 && options.expectedSha256.trim()) {
+      await this.verifySha256(tmpPath, options.expectedSha256)
+    }
+  }
+
+  private static formatMirrorError(err: any): string {
+    const status = err?.response?.status
+    if (status) return `HTTP_${status}`
+    const code = String(err?.code || '').toUpperCase()
+    const msg = String(err?.message || 'NET_ERROR').replace(/[\r\n]+/g, ' ').trim()
+    if (code === 'ECONNABORTED' || msg.toLowerCase().includes('timeout')) return 'TIMEOUT'
+    if (code === 'ERR_CANCELED' || msg === 'ABORTED') return 'CANCELED'
+    if (code) return code
+    if (msg.startsWith('ERR_')) return msg.split(':')[0]
+    return msg.slice(0, 32)
+  }
+
+  private static destroyStreamAndWaitClose(writer: fs.WriteStream, waitMs = 1000): Promise<void> {
+    if (writer.closed) return Promise.resolve()
+    return new Promise(resolve => {
+      let settled = false
+      const done = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve()
+      }
+      const timer = setTimeout(done, waitMs)
+      writer.once('close', done)
+      writer.once('error', done)
+      if (!writer.destroyed) writer.destroy()
+    })
+  }
+
   private static async streamToFile(url: string, dest: string, signal?: AbortSignal): Promise<void> {
     const res = await axios({
       url,
       method: 'GET',
       responseType: 'stream',
-      timeout: 15000,
-      maxRedirects: 5,
+      timeout: 30000,
+      maxRedirects: 8,
       headers: { 'User-Agent': 'TitanCore/2.0/Nexus' },
       signal,
       validateStatus: s => s >= 200 && s < 300
@@ -223,31 +305,41 @@ export class RacingDownloader {
     try {
       await pipeline(res.data, writer)
     } catch (err) {
-      if (!writer.destroyed) writer.destroy()
+      await this.destroyStreamAndWaitClose(writer)
       throw err
     }
   }
 
-  private static async downloadDirectStream(url: string, options: RaceOptions): Promise<string> {
-    const tmp = `${options.destPath}.tmp_${Date.now()}`
-    fs.mkdirSync(path.dirname(options.destPath), { recursive: true })
-    try {
-      await this.streamToFile(url, tmp)
-      if (options.destPath.endsWith('.zip')) {
-        this.assertZipHeader(tmp)
+  private static async moveFileWithRetry(src: string, dest: string, tries = 5): Promise<void> {
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    for (let i = 0; i < tries; i++) {
+      try {
+        try {
+          if (fs.existsSync(dest)) fs.unlinkSync(dest)
+        } catch (unlinkErr: any) {
+          if (unlinkErr?.code !== 'ENOENT') throw unlinkErr
+        }
+        try {
+          fs.renameSync(src, dest)
+        } catch (renErr: any) {
+          if (renErr?.code === 'EXDEV') {
+            fs.copyFileSync(src, dest)
+            try { fs.unlinkSync(src) } catch {}
+          } else {
+            throw renErr
+          }
+        }
+        return
+      } catch (e: any) {
+        const code = String(e?.code || '').toUpperCase()
+        const retryable = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES'
+        if (!retryable || i === tries - 1) throw e
+        await new Promise(r => setTimeout(r, 150 * Math.pow(2, i)))
       }
-      if (options.expectedSha256 && options.expectedSha256.trim()) {
-        await this.verifySha256(tmp, options.expectedSha256)
-      }
-      if (fs.existsSync(options.destPath)) fs.unlinkSync(options.destPath)
-      fs.renameSync(tmp, options.destPath)
-      return options.destPath
-    } finally {
-      if (fs.existsSync(tmp)) await this.rmWithRetry(tmp, 3)
     }
   }
 
-  private static async rmWithRetry(target: string, tries = 3): Promise<void> {
+  private static async rmWithRetry(target: string, tries = 5): Promise<void> {
     if (!fs.existsSync(target)) return
     for (let i = 0; i < tries; i++) {
       try {
@@ -255,7 +347,7 @@ export class RacingDownloader {
         return
       } catch (e) {
         if (i === tries - 1) break
-        await new Promise(r => setTimeout(r, 200 * Math.pow(2, i)))
+        await new Promise(r => setTimeout(r, 250 * Math.pow(2, i)))
       }
     }
   }

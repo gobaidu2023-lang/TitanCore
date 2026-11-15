@@ -27,14 +27,16 @@ static HANDLE GetMediumIntegrityShellToken() {
   if (!hShellProcess) return NULL;
 
   HANDLE hShellToken = NULL;
-  if (!OpenProcessToken(hShellProcess, TOKEN_DUPLICATE, &hShellToken)) {
+  if (!OpenProcessToken(hShellProcess, TOKEN_QUERY | TOKEN_DUPLICATE, &hShellToken)) {
     CloseHandle(hShellProcess);
     return NULL;
   }
   CloseHandle(hShellProcess);
 
   HANDLE hToken = NULL;
-  if (!DuplicateTokenEx(hShellToken, TOKEN_ALL_ACCESS, NULL, SecurityImpersonation, TokenPrimary, &hToken)) {
+  const DWORD desiredAccess = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY |
+                              TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID;
+  if (!DuplicateTokenEx(hShellToken, desiredAccess, NULL, SecurityImpersonation, TokenPrimary, &hToken)) {
     CloseHandle(hShellToken);
     return NULL;
   }
@@ -100,12 +102,21 @@ static std::wstring BuildEnvBlock(const std::wstring& baseDir, const std::wstrin
   return result;
 }
 
-// 判断路径是否处于 Windows 受保护的 Program Files (含 x86) 目录下
+// 判断路径是否处于 Windows 受保护的 Program Files (含 x86 与 8.3 短路径) 目录下
 static bool IsProtectedProgramFilesPath(const std::wstring& p) {
   if (p.empty()) return false;
-  std::wstring lower = p;
-  std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
-  return lower.find(L"program files") != std::wstring::npos;
+  std::wstring resolved = p;
+  DWORD needed = GetLongPathNameW(p.c_str(), NULL, 0);
+  if (needed > 0) {
+    std::wstring buf(needed, L'\0');
+    DWORD written = GetLongPathNameW(p.c_str(), &buf[0], needed);
+    if (written > 0 && written < needed) {
+      buf.resize(written);
+      resolved = std::move(buf);
+    }
+  }
+  std::transform(resolved.begin(), resolved.end(), resolved.begin(), ::towlower);
+  return resolved.find(L"program files") != std::wstring::npos;
 }
 
 static LaunchOutcome DoLaunch(const std::wstring& steamExe, const std::wstring& dllPath,

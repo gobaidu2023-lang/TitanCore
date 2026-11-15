@@ -16,8 +16,6 @@ interface Window {
       showItemInFolder: (filePath: string) => Promise<any>
       getUserLibrary: () => Promise<any[]>
       removeUserLibrary: (resourceId: string) => Promise<boolean>
-      setManifestNode: (node: string) => Promise<any>
-      getManifestNode: () => Promise<any>
       runDiagnostics: () => Promise<any>
       launchGame: (appId: string) => Promise<any>
       proxyPost: (url: string, body: any) => Promise<any>
@@ -58,7 +56,6 @@ interface Window {
       download: (accountId: string, appId: string) => Promise<any>
       manualPack: (accountId: string, appId: string) => Promise<any>
       manualRestore: (accountId: string, appId: string) => Promise<any>
-      openLocalFolder: (accountId: string, appId: string) => Promise<any>
       deleteSave: (appId: string) => Promise<any>
       listCloudSaves: () => Promise<any>
       migrateCrStorage: () => Promise<{ success: boolean; error?: string }>
@@ -66,7 +63,7 @@ interface Window {
     ost: {
       getMode: () => Promise<'pure' | 'classic'>
       switchMode: (target: 'pure' | 'classic') => Promise<{ success: boolean; mode: 'pure' | 'classic'; error?: string }>
-      launchSteam: () => Promise<{ success: boolean; handshake: boolean; degraded?: boolean; protected?: boolean; account?: string; accountName?: string; error?: string }>
+      launchSteam: () => Promise<{ success: boolean; handshake: boolean; degraded?: boolean; protected?: boolean; patternFailed?: boolean; account?: string; accountName?: string; error?: string }>
       launchSteamNative: () => Promise<{ success: boolean; native: boolean; error?: string }>
       scanAntiCheatGames: () => Promise<string[]>
     }

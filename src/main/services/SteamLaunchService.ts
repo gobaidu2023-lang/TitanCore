@@ -11,12 +11,14 @@ import { PatternSyncService } from './PatternSyncService'
 import { DepotHealerService } from './DepotHealerService'
 import { Logger } from '../utils/logger'
 import { WinNative } from '../utils/winNative'
+import { TitanProtocol } from './TitanProtocol'
 
 export interface LaunchSteamResult {
   success: boolean
   handshake: boolean
   degraded?: boolean
   protected?: boolean
+  patternFailed?: boolean
   account?: string
   accountName?: string
   error?: string
@@ -147,10 +149,16 @@ export class SteamLaunchService {
         console.warn('[SteamLaunchService] 启动前存量云存档静默迁移跳过:', migErr)
       }
 
-      // 前置主动拉取 Pattern / IPC 特征码：尽力而为（Best-effort），绝不阻断启动
+      // 前置主动拉取 Pattern / IPC 特征码（内置 1 次重试）：尽力而为，仅在纯净模式启动做最终裁决并向 UI 透传失败标记
+      let patternFailed = false
       try {
-        await PatternSyncService.validatePatterns()
+        const patRes = await PatternSyncService.validatePatterns()
+        if (mode === 'pure' && (patRes.error || (patRes.missing && patRes.missing.length > 0))) {
+          patternFailed = true
+          Logger.warn('SteamLaunchService', '纯净模式前置特征码同步未完整就绪', { error: patRes.error, missing: patRes.missing })
+        }
       } catch (patternErr: any) {
+        if (mode === 'pure') patternFailed = true
         console.warn('[SteamLaunchService] 前置特征码同步捕获:', patternErr?.message)
       }
 
@@ -182,10 +190,10 @@ export class SteamLaunchService {
         }
       }
 
-      // 经典模式: 启动前将本地最新工具包覆盖同步至 Steam 根并清理早期遗产，代理入口自会挂载
+      // 经典模式: 启动前仅在活根缺失核心件时从本地缓存毫秒级补齐，绝不联网阻塞
       if (mode === 'classic') {
-        await ModeSwitchService.syncClassicArtifacts(steamPath).catch((err) => {
-          console.warn('[SteamLaunchService] 经典模式同步最新工具包异常:', err?.message)
+        await ModeSwitchService.ensureClassicRootFromLocalCache(steamPath).catch((err) => {
+          console.warn('[SteamLaunchService] 经典模式本地缓存补齐异常:', err?.message)
         })
         this.plainLaunch(steamExe)
         DepotHealerService.start(steamPath).catch(() => {})
@@ -197,7 +205,7 @@ export class SteamLaunchService {
 
       if (!native || !fs.existsSync(dllPath)) {
         this.plainLaunch(steamExe)
-        return { success: true, handshake: false, degraded: true, error: !native ? 'NATIVE_MISSING' : 'DLL_MISSING' }
+        return { success: true, handshake: false, degraded: true, error: !native ? 'NATIVE_MISSING' : 'DLL_MISSING', ...(patternFailed ? { patternFailed: true } : {}) }
       }
 
       const timeouts = [25000, 35000]
@@ -214,7 +222,7 @@ export class SteamLaunchService {
         }
         if (result.handshake) {
           DepotHealerService.start(steamPath).catch(() => {})
-          return { success: true, handshake: true }
+          return { success: true, handshake: true, ...(patternFailed ? { patternFailed: true } : {}) }
         }
         console.error(`[SteamLaunchService] 注入尝试${attempt + 1}未握手:`, result.error)
         if (attempt < timeouts.length - 1) await ModeSwitchService.ensureSteamDead()
@@ -226,9 +234,9 @@ export class SteamLaunchService {
       await ModeSwitchService.ensureSteamDead()
       this.plainLaunch(steamExe)
       DepotHealerService.start(steamPath).catch(() => {})
-      return { success: true, handshake: false, degraded: true, error: 'HANDSHAKE_TIMEOUT' }
+      return { success: true, handshake: false, degraded: true, error: 'HANDSHAKE_TIMEOUT', ...(patternFailed ? { patternFailed: true } : {}) }
     } catch (e: any) {
-      return { success: false, handshake: false, error: e?.message || 'UNKNOWN' }
+      return { success: false, handshake: false, error: TitanProtocol.translateError(e, 'ERR_LAUNCH_FAILED') }
     } finally {
       this.busy = false
     }
@@ -250,7 +258,7 @@ export class SteamLaunchService {
       return { success: true, native: true }
     } catch (e: any) {
       console.error('[SteamLaunchService] 原生启动异常:', e?.message)
-      return { success: false, native: true, error: e?.message || 'UNKNOWN' }
+      return { success: false, native: true, error: TitanProtocol.translateError(e, 'ERR_LAUNCH_FAILED') }
     } finally {
       this.busy = false
     }

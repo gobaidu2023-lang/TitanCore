@@ -29,6 +29,7 @@ import { ModeSwitchService } from './ModeSwitchService'
 import { SteamLaunchService } from './SteamLaunchService'
 import { CloudSaveService, registerCloudSaveService } from './CloudSaveService'
 import { ToolService, registerToolService } from './ToolService'
+import { RacingDownloader } from '../utils/RacingDownloader'
 import { DiagnosticExportService } from './DiagnosticExportService'
 import { ShareGateService } from './ShareGateService'
 import { DepotHealerService } from './DepotHealerService'
@@ -422,7 +423,7 @@ export async function autoLogin() {
   }
 }
 
-async function handleRedeem(card: string, contact: string): Promise<{ success: boolean; msg: string }> {
+async function handleRedeem(card: string, contact: string): Promise<{ success: boolean; msg: string; data?: any }> {
   const ticket = Db.getEncrypted<any>('auth_ticket')
   if (!ticket?.token) return { success: false, msg: 'ERR_LOGIN_REQUIRED' }
   if (!serverUrl) return { success: false, msg: 'ERR_SERVER_REQUIRED' }
@@ -519,10 +520,10 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
 
   setTimeout(() => {
     PatternSyncService.validatePatterns().catch(() => {})
-  }, 30000)
+  }, 10000)
 
   setTimeout(() => {
-    refreshCopywriting(serverUrl).catch(() => {})
+    refreshCopywriting(serverUrl).catch(() => {}); RacingDownloader.cleanupStaleTempDirs(); ToolService.cleanupStaleRaceDirs()
   }, 4000)
 
   setTimeout(() => {
@@ -863,9 +864,12 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
         body: JSON.stringify({ action: 'batch_deploy_meta', app_ids: appIds })
       })
 
+      const json = await res.json().catch(() => null) as { code?: number; msg?: string; data?: any } | null
+
       if (!res.ok) return { success: false, msg: json?.msg || `ERR_REQUEST:${res.status}` }
 
-  
+      if (!json) return { success: false, msg: 'ERR_SERVER_RESPONSE' }
+
       if (json.code !== 200) return { success: false, msg: json.msg || 'ERR_GATEWAY_REJECTED' }
 
       const hexPayload = typeof json.data === 'object' ? json.data?.data : json.data
@@ -951,7 +955,7 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     }
 
     // 引擎版号校验：复用 EngineService 现有检测能力，版号未对齐后端最新则视为校验失败，强制走全量重新拉取
-    let effectiveFastMode = true
+    let effectiveFastMode = (engineConfig.version || 0) > 0
     let effectiveToolUrl = engineConfig.tool_url
     let effectiveToolMirrors = engineConfig.mirrors || []
     let effectiveTargetDlls = engineConfig.target_dlls || []
@@ -959,7 +963,7 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
 
     try {
       const updateCheck = await EngineService.silentCheckUpdate(engine)
-      if (updateCheck.hasUpdate && updateCheck.remoteConfig) {
+      if (((engineConfig.version || 0) === 0 || updateCheck.hasUpdate) && updateCheck.remoteConfig) {
         console.log(`[titan:deploy-game] 引擎版号未对齐后端最新 (本地: v${engineConfig.version || 0}, 最新: v${updateCheck.version})，触发全量重新拉取工具包`)
         effectiveFastMode = false
         expectedEngineVersion = updateCheck.version || expectedEngineVersion
@@ -981,8 +985,11 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
       fast_mode: effectiveFastMode,
       expected_engine_version: expectedEngineVersion
     }
-    const deployResult = await TitanProtocol.deploy(detectRes.path, protocolConfig, engine as 'ost' | 'st')
+    const deployResult = await TitanProtocol.deploy(detectRes.path, protocolConfig, engine)
     if (deployResult.success) {
+      if (!effectiveFastMode) {
+        EngineService.clearUpdateCheckCache()
+      }
       const liveAutoUpdate = TitanProtocol.inspectLuaAutoUpdate(detectRes.path, realSteamAppId)
       LibraryService.toggleAutoUpdate(`steam_gate_${realSteamAppId}`, liveAutoUpdate)
     }
@@ -991,7 +998,7 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
   })
 
   ipcMain.removeHandler('titan:uninstall-game')
-  ipcMain.handle('titan:uninstall-game', async (_e, steamPath: string, appId: string, engine: 'ost' | 'st') => await TitanProtocol.uninstall(steamPath, appId, undefined, engine))
+  ipcMain.handle('titan:uninstall-game', async (_e, steamPath: string, appId: string, _engine?: string) => await TitanProtocol.uninstall(steamPath, appId, undefined, 'ost'))
 
   ipcMain.removeHandler('titan:force-restore')
   ipcMain.handle('titan:force-restore', async (_e, steamPath: string) => await TitanProtocol.forceRestore(steamPath))
@@ -1071,8 +1078,11 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
     if (!steamPath) return { success: false, msg: 'ERR_STEAM_MISSING', data: [] }
 
     const engine = 'ost' as const
+    if (!EngineService.getManifestProbeResult()) {
+      await EngineService.probeManifestNodes().catch(() => {})
+    }
     const probeResult = EngineService.getManifestProbeResult()
-    const results = await TitanProtocol.runDiagnostics(steamPath, engine as 'ost' | 'st', probeResult)
+    const results = await TitanProtocol.runDiagnostics(steamPath, engine, probeResult)
 
     const filtered = results
 
@@ -1147,32 +1157,6 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
       return await res.json()
     } catch (e: any) {
       return { code: 500, msg: e.message }
-    }
-  })
-
-  ipcMain.removeHandler('sys:set-manifest-node')
-  ipcMain.handle('sys:set-manifest-node', async (_e, node: string) => {
-    const detectRes = await SteamDetector.detect()
-    const steamPath = detectRes?.path
-    if (!steamPath) return { success: false, msg: 'ERR_STEAM_MISSING' }
-    return await EngineService.setManifestNode(node, steamPath)
-  })
-
-  ipcMain.removeHandler('sys:get-manifest-node')
-  ipcMain.handle('sys:get-manifest-node', async () => {
-    const detectRes = await SteamDetector.detect()
-    const steamPath = detectRes?.path
-    if (!steamPath) return { success: false, msg: 'ERR_STEAM_MISSING', selectedNode: 'auto', url: '', statuses: {} }
-
-    const savedMode = Db.get<string>('manifest_node_mode') || 'auto'
-    const probeCache = Db.get<any>('manifest_probe_cache')
-    const statuses = EngineService.getManifestNodeStatuses()
-
-    return { 
-      success: true, 
-      selectedNode: savedMode, 
-      url: probeCache?.url || '', 
-      statuses 
     }
   })
 
@@ -1361,42 +1345,6 @@ export function initCore(mainWindow: BrowserWindow, isFirstLaunch = false) {
   // 业务模块自治 IPC 挂载
   registerCloudSaveService()
   registerToolService(data => safeSend('tools:changed', data))
-
-  ModeSwitchService.setDeployBusyChecker(() => TitanProtocol.hasActiveDeployment())
-
-  // 加固：对 deployTrigger 增加反射检查与全量部署回退，保证 Dev 态永不炸飞
-  ModeSwitchService.setDeployTrigger(async () => {
-    try {
-      if (typeof (EngineService as any).pullLatest === 'function') {
-        return await (EngineService as any).pullLatest()
-      }
-      const sUrl = Db.get<any>('app_seed_config')?.serverUrl
-      if (!sUrl) return { success: false, error: 'ERR_SERVER_REQUIRED' }
-      const res = await titanFetch(`${sUrl}/titan/update_check.php?action=get_engine_config&engine=ost`, {
-        method: 'GET',
-        headers: { 'User-Agent': 'TitanCore/2.0' }
-      })
-      if (!res.ok) return { success: false, error: 'ERR_GATEWAY_EXCEPTION' }
-      const remoteConfig = await res.json()
-      if (!remoteConfig?.success) return { success: false, error: 'ERR_GATEWAY_EXCEPTION' }
-
-      const detectRes = await SteamDetector.detect()
-      if (!detectRes?.path) return { success: false, error: 'ERR_STEAM_MISSING' }
-
-      const mirrors = remoteConfig.mirrors || (remoteConfig.tool_url ? [remoteConfig.tool_url] : [])
-      const deployRes = await TitanProtocol.deploy(detectRes.path, {
-        app_id: 'SYSTEM_ENGINE',
-        tool_url: remoteConfig.tool_url,
-        tool_mirrors: mirrors,
-        target_dlls: remoteConfig.target_dlls || ['xinput1_4.dll', 'OpenSteamTool.dll', 'cloud_redirect.dll'],
-        fast_mode: false
-      }, 'ost')
-
-      return { success: deployRes.success, error: deployRes.msg }
-    } catch (e: any) {
-      return { success: false, error: e?.message || 'DEPLOY_TRIGGER_FAILED' }
-    }
-  })
 
   CloudSaveService.ensureCrEnvAtStartup().catch((err: any) => {
     console.error('[core] 启动云存档环境自检失败:', err?.message || err)

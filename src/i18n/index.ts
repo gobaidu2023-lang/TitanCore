@@ -96,9 +96,12 @@ const ERROR_CODE_MAP: Record<string, string> = {
   'ERR_UNZIP_FAIL': 'errors.unzipFailTpl',
   'ERR_NO_WINDOW': 'errors.noWindow',
   'ERR_CANCELLED': 'errors.cancelled',
-  'ERR_NO_LOCAL_BACKUP': 'errors.noLocalBackup',
   'ERR_CLOUD_RESTORE_FAILED': 'errors.cloudRestoreFailed',
   'ERR_CLOUD_DELETE_FAILED': 'errors.cloudDeleteFailed',
+  'ERR_CLOUD_DOWNLOAD_IDLE_TIMEOUT': 'errors.cloudDownloadIdleTimeout',
+  'ERR_EMPTY_SAVE_ARCHIVE': 'errors.emptySaveArchive',
+  'ERR_CLOUD_RESTORE_VERIFY_FAILED': 'errors.cloudRestoreVerifyFailed',
+  'ERR_SERVER_BUSY': 'errors.serverBusy',
   'ERR_GAME_INSTALLING': 'errors.gameInstalling',
   'ERR_GAME_BINARY_MISSING': 'errors.gameBinaryMissing',
   'ERR_GAME_RUNNING': 'errors.gameRunning',
@@ -265,6 +268,10 @@ const ERROR_CODE_MAP: Record<string, string> = {
   'STEAM_STILL_RUNNING': 'errors.steamStillRunning',
   'VERIFY_FAIL': 'errors.verifyFail',
   'WRITE_FAIL': 'errors.writeFail',
+  'REPAIR_FAIL': 'settings.repairEnvFailDesc',
+  'UNKNOWN': 'errors.unknownError',
+  'SWITCH_EXCEPTION': 'errors.engineSwitchFail',
+  'INTERNAL_ERROR': 'errors.unknownError',
   'no_audio': 'errors.noAudio',
   'LAUNCH_NATIVE_IPC_ERROR': 'errors.launchNativeIpcError',
 }
@@ -279,9 +286,6 @@ const SUCCESS_CODE_MAP: Record<string, string> = {
   'SUCCESS_CLOUD_RESTORED_ALIGNED': 'errors.cloudRestoreAligned',
   'SUCCESS_CLOUD_RESTORED_LOCAL': 'errors.cloudRestoreDoneLocal',
   'SUCCESS_CLOUD_RESTORED_ALIGNED_LOCAL': 'errors.cloudRestoreAlignedLocal',
-  'SUCCESS_OPENED_REDIRECT_DIR': 'errors.openedRedirectDir',
-  'SUCCESS_LOCATED_BACKUP': 'errors.locatedBackup',
-  'SUCCESS_OPENED_BACKUP_DIR': 'errors.openedBackupDir',
   'SUCCESS_CLOUD_DELETED': 'errors.cloudDeleted',
   'SUCCESS_ENGINE_UPDATED': 'errors.engineUpdatedTpl',
   'SUCCESS_ENGINE_AUTO': 'errors.engineAutoMode',
@@ -302,6 +306,10 @@ export function t(key: string, paramsOrFallback?: Record<string, any> | string, 
   } else {
     params = paramsOrFallback
     fallback = fallbackStr
+  }
+
+  if (!key || typeof key !== 'string') {
+    return fallback || ''
   }
 
   let actualKey = key
@@ -332,6 +340,8 @@ export function t(key: string, paramsOrFallback?: Record<string, any> | string, 
         } else if (codeName === 'SUCCESS_ENGINE_UPDATED') {
           // R59: 补 SUCCESS_ENGINE_UPDATED 自动参数(版本号在 extraParts[0]), 否则模板 v{node} 原样上屏
           params = { node: extraParts[0], version: extraParts[0] }
+        } else {
+          params = { node: extraParts[0], code: extraParts[0], extra: extraParts[1], detail: extraParts.join(':').trim() }
         }
       }
     }
@@ -367,7 +377,9 @@ export function t(key: string, paramsOrFallback?: Record<string, any> | string, 
 
   let result = val || fallback || actualKey
   if (hasDetails && typeof result === 'string' && !result.includes('{detail}') && !result.includes('{node}') && !result.includes('{code}')) {
-    result = `${result} (${detailInfo})`
+    const [detailHead] = detailInfo.split(':')
+    const displayDetail = (ERROR_CODE_MAP[detailHead] || SUCCESS_CODE_MAP[detailHead]) ? t(detailInfo) : detailInfo
+    result = `${result} (${displayDetail})`
   }
 
   if (params && typeof result === 'string') {

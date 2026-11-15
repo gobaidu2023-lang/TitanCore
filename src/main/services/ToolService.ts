@@ -10,6 +10,7 @@ import { DownloadService } from './DownloadService'
 import { ArchiveService } from '../utils/ArchiveService'
 import { titanFetch } from '../TitanNet'
 import { WinNative } from '../utils/winNative'
+import { Logger } from '../utils/logger'
 
 export interface ToolDef {
   id: string        // 客户端内部工具 id (ipc/路径用)
@@ -346,9 +347,10 @@ export class ToolService {
         } finally {
           if (winnerGid) {
             await DownloadService.removeTask(winnerGid).catch(() => {})
+            await new Promise(r => setTimeout(r, 200))
           }
           try {
-            await this.rmWithRetry(raceDir, 3)
+            await this.rmWithRetry(raceDir, 5)
           } catch (e) {
             console.error('[ToolService] raceDir 清理失败:', raceDir, e)
           }
@@ -385,7 +387,39 @@ export class ToolService {
     }
   }
 
-  private static async rmWithRetry(target: string, tries = 3): Promise<void> {
+  /**
+   * 清理历史会话遗留的过期 .race-* 临时目录
+   */
+  static cleanupStaleRaceDirs(maxAgeMs = 10 * 60 * 1000): void {
+    const now = Date.now()
+    const scanDir = (dir: string) => {
+      try {
+        if (!fs.existsSync(dir)) return
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (!entry.isDirectory() || !entry.name.startsWith('.race-')) continue
+          const full = path.join(dir, entry.name)
+          try {
+            const st = fs.statSync(full)
+            if (now - st.mtimeMs >= maxAgeMs) {
+              fs.rmSync(full, { recursive: true, force: true })
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    const root = this.resolveToolsRoot()
+    scanDir(root)
+    for (const def of TOOLS) {
+      const toolDir = path.join(root, def.toolDir)
+      scanDir(toolDir)
+      scanDir(path.join(toolDir, 'downloads'))
+    }
+    try { scanDir(path.join(app.getPath('userData'), 'patches')) } catch {}
+  }
+
+
+  private static async rmWithRetry(target: string, tries = 5): Promise<void> {
     let lastErr: any = null
     for (let i = 0; i < tries; i++) {
       try {
@@ -524,9 +558,10 @@ export class ToolService {
         } finally {
           if (winnerGid) {
             await DownloadService.removeTask(winnerGid).catch(() => {})
+            await new Promise(r => setTimeout(r, 200))
           }
           try {
-            await this.rmWithRetry(raceDir, 3)
+            await this.rmWithRetry(raceDir, 5)
           } catch {}
         }
       }
@@ -704,9 +739,10 @@ export class ToolService {
     } finally {
       if (winnerGid) {
         await DownloadService.removeTask(winnerGid).catch(() => {})
+        await new Promise(r => setTimeout(r, 200))
       }
       try {
-        await this.rmWithRetry(raceDir, 3)
+        await this.rmWithRetry(raceDir, 5)
       } catch {}
     }
 

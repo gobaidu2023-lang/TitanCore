@@ -16,6 +16,58 @@ let win: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
 
+interface TitanDeepLinkPayload {
+  appId: string
+  action: 'deploy' | 'install'
+}
+
+let pendingDeepLink: TitanDeepLinkPayload | null = null
+let hasConsumedDeepLink = false
+let lastDeepLinkAppId = ''
+let lastDeepLinkTime = 0
+
+function parseTitanDeepLinkFromArgv(argv: string[]): TitanDeepLinkPayload | null {
+  for (const raw of argv) {
+    if (typeof raw !== 'string' || !/^titancore:\/\//i.test(raw)) continue
+    try {
+      const parsed = new URL(raw)
+      if (parsed.protocol !== 'titancore:') continue
+      const action = (parsed.hostname || parsed.pathname.replace(/^\/+/, '')).toLowerCase()
+      if (action !== 'deploy' && action !== 'install') continue
+      let appId = (parsed.searchParams.get('appid') || '').trim()
+      if (!appId) {
+        const pathMatch = parsed.pathname.match(/\/(\d{3,10})(?:\/|$)/)
+        if (pathMatch) appId = pathMatch[1]
+      }
+      if (!/^\d{3,10}$/.test(appId)) continue
+      return { appId, action }
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+function enqueueOrDispatchDeepLink(argv: string[]) {
+  const payload = parseTitanDeepLinkFromArgv(argv)
+  if (!payload) return
+  const now = Date.now()
+  if (payload.appId === lastDeepLinkAppId && now - lastDeepLinkTime < 600) {
+    return
+  }
+  lastDeepLinkAppId = payload.appId
+  lastDeepLinkTime = now
+  Logger.info('Main', `收到协议指令: titancore://${payload.action}?appid=${payload.appId}`)
+
+  if (hasConsumedDeepLink && win && !win.isDestroyed()) {
+    win.webContents.send('titan:deep-link', payload)
+  } else {
+    pendingDeepLink = payload
+  }
+}
+
+pendingDeepLink = parseTitanDeepLinkFromArgv(process.argv)
+
 if (isDev) process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true'
 
 app.setPath('userData', path.join(app.getPath('appData'), 'titan-core'))
@@ -36,11 +88,17 @@ if (!gotTheLock) {
   app.quit()
   process.exit(0)
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    enqueueOrDispatchDeepLink(argv)
     if (win) {
       if (win.isMinimized()) win.restore()
+      if (!parseTitanDeepLinkFromArgv(argv) && Db.get<boolean>('pref_launch_enhance') && !win.isDestroyed()) {
+        win.webContents.send('titan:auto-launch-steam')
+      }
       if (!win.isVisible()) win.show()
+      win.setAlwaysOnTop(true)
       win.focus()
+      win.setAlwaysOnTop(false)
     }
   })
 }
@@ -259,6 +317,35 @@ function registerGlobalIPC() {
 
   ipcMain.handle('sys:restart-steam', async () => SteamLaunchService.restartSteam())
 
+  const getLoginExePath = () => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+
+  ipcMain.handle('sys:get-auto-start', () => {
+    try {
+      if (app.isPackaged) {
+        return app.getLoginItemSettings({ path: getLoginExePath(), args: ['--autostart'] }).openAtLogin
+      }
+    } catch {}
+    return !!Db.get<boolean>('pref_auto_start_tc')
+  })
+
+  ipcMain.handle('sys:set-auto-start', (_event, enabled: boolean) => {
+    const next = !!enabled
+    Db.set('pref_auto_start_tc', next)
+    try {
+      if (app.isPackaged) {
+        app.setLoginItemSettings({
+          openAtLogin: next,
+          path: getLoginExePath(),
+          args: next ? ['--autostart'] : []
+        })
+      }
+      return { success: true, enabled: next }
+    } catch (e: any) {
+      Logger.warn('Main', '设置开机自启失败:', e?.message)
+      return { success: false, enabled: next, error: e?.message }
+    }
+  })
+
   ipcMain.handle('sys:open-log-dir', async () => {
     const logFile = Logger.getLogFilePath()
     if (logFile && fsSync.existsSync(logFile)) {
@@ -302,6 +389,13 @@ function registerGlobalIPC() {
     const config = Db.get<any>('app_seed_config')
     const serverUrl = config?.serverUrl || Db.get<any>('app_settings')?.serverUrl || process.env.TITAN_NODE_1 || ''
     return await GatewayService.redeemCores(score, amount, serverUrl, gameId || 'default')
+  })
+
+  ipcMain.handle('titan:consume-pending-deeplink', () => {
+    hasConsumedDeepLink = true
+    const item = pendingDeepLink
+    pendingDeepLink = null
+    return item
   })
 
   ipcMain.handle('badab:claim-victory', async (_event, route: 'justice' | 'corruption', durationSeconds: number, starYear: number) => {
@@ -442,6 +536,9 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(async () => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.TitanCore.app')
+    if (app.isPackaged) {
+      app.setAsDefaultProtocolClient('titancore')
+    }
   }
 
   setupAppProtocolAndNetwork()

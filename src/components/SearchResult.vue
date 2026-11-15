@@ -310,6 +310,8 @@ const errorState = computed(() => {
       return { code: 'CONNECTION LOST', message: t('search.connLost') }
     case 'KEYWORD_INVALID':
       return { code: 'INVALID QUERY', message: t('search.invalidQuery') }
+    case 'UPSTREAM_NO_STOCK':
+      return { code: 'OUT OF STOCK', message: t('search.upstreamNoStock') }
     case 'RESOURCE_NOT_FOUND':
     default:
       return { code: 'NO SIGNAL', message: t('search.noSignal', { kw }) }
@@ -336,10 +338,12 @@ const handleCardAction = async (item: any) => {
   } else {
     if (item.type === 'sharegame') {
       selectedItem.value = item
+      isDetailVisible.value = false
       isShareModalVisible.value = true
       return
     }
     selectedItem.value = item
+    isShareModalVisible.value = false
     isDetailVisible.value = true
   }
 }

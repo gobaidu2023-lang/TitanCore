@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, nextTick } from 'vue'
 import { useTelemetryStore } from './telemetryStore'
 
-export type SearchErrorType = 'NONE' | 'KEYWORD_INVALID' | 'RESOURCE_NOT_FOUND' | 'NETWORK_ERROR' | 'QUOTA_EXHAUSTED'
+export type SearchErrorType = 'NONE' | 'KEYWORD_INVALID' | 'RESOURCE_NOT_FOUND' | 'UPSTREAM_NO_STOCK' | 'NETWORK_ERROR' | 'QUOTA_EXHAUSTED'
 
 export const useSearchStore = defineStore('search', () => {
   const telemetryStore = useTelemetryStore()
@@ -95,10 +95,13 @@ export const useSearchStore = defineStore('search', () => {
     return ''
   }
 
+  let activeSearchSeq = 0
+
   const doSearch = async (keyword: string) => {
     const kw = keyword.trim()
     if (!kw) return
 
+    const seq = ++activeSearchSeq
     isWarping.value = true
     isSearching.value = true
     hasSearched.value = true
@@ -108,9 +111,11 @@ export const useSearchStore = defineStore('search', () => {
     autoOpenItem.value = null
 
     await nextTick()
+    if (seq !== activeSearchSeq) return
 
     try {
       const result = await window.electron.invoke('sys:global-search', kw)
+      if (seq !== activeSearchSeq) return
 
       if (result?.success && Array.isArray(result.data) && result.data.length > 0) {
         telemetryStore.trackSearch(kw, result.data.length)
@@ -121,20 +126,25 @@ export const useSearchStore = defineStore('search', () => {
           meta: item.meta || item.meta_json || {}
         }))
 
-        if (result.data.length === 1 || (/^\d+$/.test(kw) && String(result.data[0].id) === kw)) {
+        if (result.data.length === 1 || (/^\d+$/.test(kw) && extractAppId(searchResults.value[0]) === kw)) {
           autoOpenItem.value = searchResults.value[0]
         }
       } else {
         currentError.value = result?.error || 'RESOURCE_NOT_FOUND'
       }
     } catch (e) {
+      if (seq !== activeSearchSeq) return
       console.error('[SearchStore] 搜索异常:', e)
       currentError.value = 'NETWORK_ERROR'
     } finally {
-      isSearching.value = false
-      setTimeout(() => {
-        isWarping.value = false
-      }, 300)
+      if (seq === activeSearchSeq) {
+        isSearching.value = false
+        setTimeout(() => {
+          if (seq === activeSearchSeq) {
+            isWarping.value = false
+          }
+        }, 300)
+      }
     }
   }
 

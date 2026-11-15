@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
-import { app, dialog, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, dialog, BrowserWindow, ipcMain } from 'electron'
 import axios from 'axios'
 import { SteamDetector } from './SteamDetector'
 import { ModeSwitchService } from './ModeSwitchService'
@@ -31,21 +31,208 @@ export interface SteamAccountDetail {
   timestamp: number      // 活跃时间戳
 }
 
+const STEAMID64_BASE = 76561197960265728n
+const CR_META_EXACT_NAMES = new Set([
+  'cn.dat',
+  'meta.json',
+  'file_tokens.dat',
+  'root_tokens.dat',
+  'root_token.dat'
+])
+
 export class CloudSaveService {
 
+  // ================= 通用重试与账号/路径兜底解析 =================
+  private static async withRetry<T>(fn: () => T | Promise<T>, attempts = 3, delayMs = 120): Promise<T> {
+    let lastErr: any
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fn()
+      } catch (e) {
+        lastErr = e
+        if (i < attempts - 1) {
+          await new Promise(r => setTimeout(r, delayMs))
+        }
+      }
+    }
+    throw lastErr
+  }
+
+  private static withRetrySync<T>(fn: () => T, attempts = 3): T {
+    let lastErr: any
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return fn()
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    throw lastErr
+  }
+
+  // 统一归一化为 CR 与 Steam userdata 通用的 32 位 AccountID（兼容误传 17-18 位 SteamID64）
+  private static normalizeAccountId(rawId: unknown): string | null {
+    const str = String(rawId ?? '').trim()
+    if (!/^\d+$/.test(str)) return null
+    try {
+      if (str.length >= 17) {
+        const low = (BigInt(str) & 0xFFFFFFFFn).toString()
+        return low !== '0' ? low : null
+      }
+      return str !== '0' ? str : null
+    } catch {
+      return null
+    }
+  }
+
+  private static toSteamId64(accountId: string): string | null {
+    const str = String(accountId ?? '').trim()
+    if (!/^\d+$/.test(str) || str === '0') return null
+    try {
+      if (str.length >= 17) return str
+      return (STEAMID64_BASE + BigInt(str)).toString()
+    } catch {
+      return null
+    }
+  }
+
+  // 查找兼容：同时匹配 32 位 AccountID 与对应 64 位 SteamID 目录（防用户手工建错目录层）
+  private static getAccountFolderAliases(accountId: string): string[] {
+    const out: string[] = []
+    const push = (v: string | null) => {
+      if (v && /^\d+$/.test(v) && !out.includes(v)) out.push(v)
+    }
+    const raw = String(accountId ?? '').trim()
+    const norm = this.normalizeAccountId(raw)
+    push(norm)
+    push(raw)
+    if (norm) push(this.toSteamId64(norm))
+    return out
+  }
+
+  private static isValidSteamRoot(dir: string | null | undefined): dir is string {
+    if (!dir) return false
+    try {
+      return fs.existsSync(path.join(dir, 'steam.exe'))
+    } catch {
+      return false
+    }
+  }
+
+  private static async resolveSteamPath(): Promise<string | null> {
+    for (let i = 0; i < 2; i++) {
+      try {
+        const det = await SteamDetector.detect()
+        if (det?.path && this.isValidSteamRoot(det.path)) return det.path
+      } catch {}
+      if (i === 0) await new Promise(r => setTimeout(r, 150))
+    }
+
+    // 兜底读取 Windows Steam 注册表路径
+    try {
+      const regSteamPath = WinNative.regReadString('HKCU', 'Software\\Valve\\Steam', 'SteamPath')
+      if (regSteamPath) {
+        const norm = path.win32.normalize(regSteamPath.trim().replace(/^"|"$/g, ''))
+        if (this.isValidSteamRoot(norm)) return norm
+      }
+      const regSteamExe = WinNative.regReadString('HKCU', 'Software\\Valve\\Steam', 'SteamExe')
+      if (regSteamExe) {
+        const dir = path.win32.dirname(path.win32.normalize(regSteamExe.trim().replace(/^"|"$/g, '')))
+        if (this.isValidSteamRoot(dir)) return dir
+      }
+      const regCmd = WinNative.regReadString('HKCR', 'steam\\shell\\open\\command', '')
+      if (regCmd) {
+        const m = regCmd.match(/"([a-zA-Z]:\\[^"]+\.exe)"/i) || regCmd.match(/([a-zA-Z]:\\[^\r\n]+?\.exe)/i)
+        if (m) {
+          const dir = path.win32.dirname(m[1])
+          if (this.isValidSteamRoot(dir)) return dir
+        }
+      }
+    } catch {}
+
+    return null
+  }
+
+  private static normalizeRootPath(raw: string): string {
+    const cleaned = raw.trim().replace(/^"|"$/g, '')
+    if (!cleaned) return ''
+    const norm = path.win32.normalize(cleaned)
+    return norm.length > 3 ? norm.replace(/[\\/]+$/, '') : norm
+  }
+
+  // 收集全部有效 CR 状态根目录（按优先级去重，用于读/扫兜底）
+  private static getCrRootCandidates(steamPath?: string | null): string[] {
+    const rawList: Array<string | null | undefined> = [
+      process.env.CR_STATE_DIR,
+      WinNative.regReadString('HKCU', 'Environment', 'CR_STATE_DIR'),
+      WinNative.regReadString('HKCU', 'Software\\TitanCore', 'OstDir'),
+      ModeSwitchService.ostDir,
+      steamPath
+    ]
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const raw of rawList) {
+      if (!raw || !raw.trim()) continue
+      const norm = this.normalizeRootPath(raw)
+      if (!norm) continue
+      const key = norm.toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        result.push(norm)
+      }
+    }
+    return result
+  }
+
   // ================= 路径统一入口 =================
-  private static getSaveRoot(steamPath: string, accountId: string, appId: string): string {
+  private static getSaveRoot(steamPath: string | null | undefined, accountId: string, appId: string): string {
     const accStr = String(accountId ?? '').trim()
     const appStr = String(appId ?? '').trim()
     if (!/^\d+$/.test(accStr) || !/^\d+$/.test(appStr)) {
       throw new Error(`ERR_INVALID_ACCOUNT_OR_APP_ID: invalid accountId (${accountId}) or appId (${appId})`)
     }
-    return path.join(this.getCrRoot(steamPath), 'cloud_redirect', 'storage', accStr, appStr)
+    const crRoot = this.getCrRoot(steamPath)
+    if (!crRoot) throw new Error('ERR_STEAM_PATH')
+    return path.join(crRoot, 'cloud_redirect', 'storage', accStr, appStr)
   }
 
-  // TC-P13: CR 存储根解析 -- env(CR_STATE_DIR) 优先, 回落 Steam 根; 两模式共用一份, 不随切换变化
-  private static getCrRoot(steamPath: string): string {
-    return process.env.CR_STATE_DIR || steamPath
+  // 在所有候选 CR 根目录与账号别名中定位真实存档目录
+  private static resolveExistingSaveDir(steamPath: string | null | undefined, accountId: string, appId: string): string | null {
+    const appStr = String(appId ?? '').trim()
+    if (!/^\d+$/.test(appStr)) return null
+    const aliases = this.getAccountFolderAliases(accountId)
+    if (aliases.length === 0) return null
+
+    let firstExistingDir: string | null = null
+    for (const root of this.getCrRootCandidates(steamPath)) {
+      for (const acc of aliases) {
+        const candidate = path.join(root, 'cloud_redirect', 'storage', acc, appStr)
+        if (!fs.existsSync(candidate)) continue
+        if (!firstExistingDir) firstExistingDir = candidate
+        if (this.checkHasActualSave(candidate)) return candidate
+      }
+    }
+    return firstExistingDir
+  }
+
+  // TC-P13: CR 存储主根解析 -- env(CR_STATE_DIR) → 注册表 CR_STATE_DIR/OstDir → ostDir → Steam 根
+  private static getCrRoot(steamPath?: string | null): string {
+    const envDir = process.env.CR_STATE_DIR ? this.normalizeRootPath(process.env.CR_STATE_DIR) : ''
+    if (envDir) return envDir
+
+    const regCrRaw = WinNative.regReadString('HKCU', 'Environment', 'CR_STATE_DIR')
+    const regCrDir = regCrRaw ? this.normalizeRootPath(regCrRaw) : ''
+    if (regCrDir) {
+      process.env.CR_STATE_DIR = regCrDir
+      return regCrDir
+    }
+
+    const regOstRaw = WinNative.regReadString('HKCU', 'Software\\TitanCore', 'OstDir')
+    const regOstDir = regOstRaw ? this.normalizeRootPath(regOstRaw) : ''
+    if (regOstDir) return regOstDir
+
+    if (fs.existsSync(ModeSwitchService.ostDir)) return this.normalizeRootPath(ModeSwitchService.ostDir)
+    return steamPath ? this.normalizeRootPath(steamPath) : ''
   }
 
   // TC-P13: 目录文件计数(迁移校验用)
@@ -222,20 +409,26 @@ export class CloudSaveService {
     return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null
   }
 
-  // 检查目标目录下是否存在实质存档文件（排除纯元数据文件干扰）
+  // 递归检查目标目录下是否存在至少 1 个非元数据的实质存档文件（含短暂锁重试）
+  private static hasActualSaveFileRecursive(dirPath: string): boolean {
+    const entries = this.withRetrySync(() => fs.readdirSync(dirPath, { withFileTypes: true }))
+    for (const entry of entries) {
+      const nameLower = entry.name.toLowerCase()
+      if (entry.isDirectory()) {
+        if (this.hasActualSaveFileRecursive(path.join(dirPath, entry.name))) return true
+      } else if (entry.isFile()) {
+        if (nameLower.endsWith('.cloudredirect') || CR_META_EXACT_NAMES.has(nameLower)) continue
+        return true
+      }
+    }
+    return false
+  }
+
+  // 检查目标目录下是否存在实质存档文件（排除纯元数据文件及空壳目录干扰）
   private static checkHasActualSave(savePath: string): boolean {
-    if (!fs.existsSync(savePath)) return false
+    if (!savePath || !fs.existsSync(savePath)) return false
     try {
-      const entries = fs.readdirSync(savePath)
-      const actualFiles = entries.filter(name => 
-        !name.endsWith('.cloudredirect') && 
-        name !== 'cn.dat' && 
-        name !== 'meta.json' && 
-        name !== 'file_tokens.dat' && 
-        name !== 'root_tokens.dat' && 
-		name !== 'root_token.dat'
-      )
-      return actualFiles.length > 0
+      return this.hasActualSaveFileRecursive(savePath)
     } catch {
       return false
     }
@@ -294,63 +487,114 @@ export class CloudSaveService {
     }
   }
 
-  // ================= 账号全量结构化解析（SteamID64 + 昵称 + 活跃标记） =================
-  public static getDetailedSteamAccounts(steamPath: string): SteamAccountDetail[] {
-    const loginUsersPath = path.join(steamPath, 'config', 'loginusers.vdf')
-    if (!fs.existsSync(loginUsersPath)) return []
-
-    try {
-      const content = fs.readFileSync(loginUsersPath, 'utf-8')
-      const users: SteamAccountDetail[] = []
-
-      const userBlockRegex = /"(\d{17,18})"\s*\{([^}]*)\}/g
-      let match: RegExpExecArray | null
-
-      while ((match = userBlockRegex.exec(content)) !== null) {
-        const steamId64 = match[1]
-        const blockContent = match[2]
-
-        const personaMatch = blockContent.match(/"PersonaName"\s+"([^"]*)"/i)
-        const personaName = personaMatch ? personaMatch[1] : ''
-
-        const accountMatch = blockContent.match(/"AccountName"\s+"([^"]*)"/i)
-        const accountName = accountMatch ? accountMatch[1] : ''
-
-        const recentMatch = blockContent.match(/"MostRecent"\s+"([^"]*)"/i)
-        const autoLoginMatch = blockContent.match(/"AutoLogin"\s+"([^"]*)"/i)
-        const mostRecent = (recentMatch ? recentMatch[1] === '1' : false) || (autoLoginMatch ? autoLoginMatch[1] === '1' : false)
-
-        const rememberMatch = blockContent.match(/"RememberPassword"\s+"([^"]*)"/i)
-        const isRemembered = rememberMatch ? rememberMatch[1] === '1' : true
-        if (!isRemembered && !mostRecent) continue
-
-        const tsMatch = blockContent.match(/"Timestamp"\s+"([^"]*)"/i)
-        const timestamp = tsMatch ? parseInt(tsMatch[1], 10) || 0 : 0
-
-        const accountId = (BigInt(steamId64) & 0xFFFFFFFFn).toString()
-        if (accountId && accountId !== '0') {
-          users.push({
-            steamId64,
-            accountId,
-            personaName: personaName || accountName || `User_${accountId}`,
-            accountName,
-            mostRecent,
-            timestamp
-          })
+  // 花括号深度安全的 loginusers.vdf 块解析（免疫昵称含 { } 或子对象嵌套）
+  private static extractVdfUserBlocks(content: string): Array<{ steamId64: string; blockContent: string }> {
+    const blocks: Array<{ steamId64: string; blockContent: string }> = []
+    const keyRegex = /"(\d{17,18})"\s*\{/g
+    let m: RegExpExecArray | null
+    while ((m = keyRegex.exec(content)) !== null) {
+      const steamId64 = m[1]
+      const openIdx = m.index + m[0].length - 1
+      let depth = 1
+      let inQuote = false
+      let i = openIdx + 1
+      while (i < content.length && depth > 0) {
+        const ch = content[i]
+        if (ch === '\\' && inQuote) {
+          i += 2
+          continue
         }
+        if (ch === '"') {
+          inQuote = !inQuote
+        } else if (!inQuote) {
+          if (ch === '{') depth++
+          else if (ch === '}') depth--
+        }
+        i++
       }
-
-      users.sort((a, b) => {
-        if (a.mostRecent && !b.mostRecent) return -1
-        if (!a.mostRecent && b.mostRecent) return 1
-        return b.timestamp - a.timestamp
-      })
-
-      return users
-    } catch (e) {
-      console.warn('[CloudSaveService] 解析 loginusers.vdf 异常:', e)
-      return []
+      if (depth === 0) {
+        blocks.push({ steamId64, blockContent: content.slice(openIdx + 1, i - 1) })
+        keyRegex.lastIndex = i
+      }
     }
+    return blocks
+  }
+
+  // ================= 账号全量结构化解析（SteamID64 + 昵称 + 活跃标记） =================
+  public static getDetailedSteamAccounts(steamPath: string, includeUnremembered = false): SteamAccountDetail[] {
+    const loginUsersPath = path.join(steamPath, 'config', 'loginusers.vdf')
+    if (fs.existsSync(loginUsersPath)) {
+      try {
+        const content = this.withRetrySync(() => {
+          const text = fs.readFileSync(loginUsersPath, 'utf-8')
+          if (!text.trim()) throw new Error('EMPTY_LOGINUSERS_VDF')
+          return text
+        }, 3)
+        const users: SteamAccountDetail[] = []
+
+        for (const { steamId64, blockContent } of this.extractVdfUserBlocks(content)) {
+          const personaName = this.readVdfStringValue(blockContent, 'PersonaName')
+          const accountName = this.readVdfStringValue(blockContent, 'AccountName')
+
+          const recentVal = this.readVdfStringValue(blockContent, 'MostRecent')
+          const autoLoginVal = this.readVdfStringValue(blockContent, 'AutoLogin')
+          const mostRecent = recentVal === '1' || autoLoginVal === '1'
+
+          const rememberVal = this.readVdfStringValue(blockContent, 'RememberPassword')
+          const isRemembered = rememberVal ? rememberVal === '1' : true
+          if (!includeUnremembered && !isRemembered && !mostRecent) continue
+
+          const tsVal = this.readVdfStringValue(blockContent, 'Timestamp')
+          const timestamp = tsVal ? parseInt(tsVal, 10) || 0 : 0
+
+          const accountId = this.normalizeAccountId(steamId64)
+          if (accountId) {
+            users.push({
+              steamId64,
+              accountId,
+              personaName: personaName || accountName || `User_${accountId}`,
+              accountName,
+              mostRecent,
+              timestamp
+            })
+          }
+        }
+
+        users.sort((a, b) => {
+          if (a.mostRecent && !b.mostRecent) return -1
+          if (!a.mostRecent && b.mostRecent) return 1
+          return b.timestamp - a.timestamp
+        })
+
+        if (users.length > 0) return users
+      } catch (e) {
+        console.warn('[CloudSaveService] 解析 loginusers.vdf 异常，尝试兜底目录解析:', e)
+      }
+    }
+
+    // 兜底：当 loginusers.vdf 缺失、被清空或解析为空时，扫描 userdata/<accountId> 补全账号
+    const fallbackUsers: SteamAccountDetail[] = []
+    const userdataDir = path.join(steamPath, 'userdata')
+    if (fs.existsSync(userdataDir)) {
+      try {
+        for (const entry of this.withRetrySync(() => fs.readdirSync(userdataDir, { withFileTypes: true }))) {
+          if (!entry.isDirectory()) continue
+          const accountId = this.normalizeAccountId(entry.name)
+          const steamId64 = accountId ? this.toSteamId64(accountId) : null
+          if (accountId && steamId64) {
+            fallbackUsers.push({
+              steamId64,
+              accountId,
+              personaName: `User_${accountId}`,
+              accountName: '',
+              mostRecent: false,
+              timestamp: 0
+            })
+          }
+        }
+      } catch {}
+    }
+    return fallbackUsers
   }
 
   // ================= 解析 Steam 原生切换列表（兼容原 scanAccounts 接口） =================
@@ -494,72 +738,142 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
   }
 }
 
-  // ================= 本地链：账号扫描（严格基于当前登录列表，无幽灵账号） =================
-  static async scanAccounts(): Promise<string[]> {
-    const detectRes = await SteamDetector.detect()
-    const steamPath = detectRes.path
-    if (!steamPath) return []
-
-    const loginUsers = this.getSteamLoginUsers(steamPath)
-    if (loginUsers.length > 0) {
-      return loginUsers
-    }
-
-    const foundAccounts = new Set<string>()
-    const storageDir = path.join(this.getCrRoot(steamPath), 'cloud_redirect', 'storage')
-    if (fs.existsSync(storageDir)) {
-      try {
-        const entries = fs.readdirSync(storageDir, { withFileTypes: true })
-        for (const e of entries) {
-          if (e.isDirectory() && /^\d+$/.test(e.name)) {
-            foundAccounts.add(e.name)
-          }
-        }
-      } catch {}
-    }
-
-    try {
-      const cloudData = await this.listCloudSaves()
-      if (cloudData?.data?.apps && Array.isArray(cloudData.data.apps)) {
-        for (const item of cloudData.data.apps) {
-          if (item.steam_id && /^\d+$/.test(String(item.steam_id))) {
-            foundAccounts.add(String(item.steam_id))
-          }
-        }
-      }
-    } catch {}
-
-    return Array.from(foundAccounts).sort()
+  private static readVdfStringValue(content: string, key: string): string {
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`"${escapedKey}"\\s+"((?:[^"\\\\]|\\\\.)*)"`, 'i')
+    const m = content.match(regex)
+    if (!m) return ''
+    return m[1].replace(/\\(["\\])/g, '$1').trim()
   }
 
-  // ================= 本地链：存档扫描（仅扫真实存档目录，彻底消除幽灵项） =================
-  static async scanSaves(accountId: string): Promise<{ items: any[] }> {
-    const detectRes = await SteamDetector.detect()
-    const steamPath = detectRes.path
-    if (!steamPath) return { items: [] }
+  private static getLocalConfigPersonaName(steamPath: string, accountId: string): string {
+    const localCfgPath = path.join(steamPath, 'userdata', accountId, 'config', 'localconfig.vdf')
+    if (!fs.existsSync(localCfgPath)) return ''
+    try {
+      const content = fs.readFileSync(localCfgPath, 'utf-8')
+      return this.readVdfStringValue(content, 'PersonaName')
+    } catch {
+      return ''
+    }
+  }
 
-    const foundAppIds = new Set<string>()
+  // ================= 本地链：账号扫描（优先本机 Steam 账号，零本地账号时才用云端兜底） =================
+  static async scanAccountsDetailed(): Promise<{ accounts: string[]; accountNames: Record<string, string>; prefetchedCloudData?: any }> {
+    const steamPath = await this.resolveSteamPath()
+    const foundAccounts = new Set<string>()
+    const accountNames: Record<string, string> = {}
+    let prefetchedCloudData: any = undefined
+    const addAccount = (raw: unknown) => {
+      const norm = this.normalizeAccountId(raw)
+      if (norm) foundAccounts.add(norm)
+    }
 
-    const accountDir = path.join(this.getCrRoot(steamPath), 'cloud_redirect', 'storage', accountId)
-    if (fs.existsSync(accountDir)) {
+    // 1. 优先保留当前/最近登录账号排在首位，并记录已解析的账号昵称（loginusers 缺失时内部已兜底 userdata）
+    if (steamPath) {
       try {
-        for (const entry of fs.readdirSync(accountDir, { withFileTypes: true })) {
-          if (entry.isDirectory() && /^\d+$/.test(entry.name)) {
-            const savePath = this.getSaveRoot(steamPath, accountId, entry.name)
-            if (this.checkHasActualSave(savePath)) {
-              foundAppIds.add(entry.name)
-            }
+        const loginUsers = await this.withRetry(() => this.getDetailedSteamAccounts(steamPath, true))
+        for (const u of loginUsers) {
+          addAccount(u.accountId)
+          const hasRealPersona = Boolean(u.personaName && u.personaName !== `User_${u.accountId}`)
+          const displayName = (hasRealPersona ? u.personaName : u.accountName).trim()
+          if (displayName && !accountNames[u.accountId]) {
+            accountNames[u.accountId] = displayName
           }
         }
       } catch {}
+    }
+
+    // 2. 不再因 loginUsers > 0 而短路：全量补扫所有候选 CR 存储根，确保手动恢复的任意账号目录必被发现
+    for (const crRoot of this.getCrRootCandidates(steamPath)) {
+      const storageDir = path.join(crRoot, 'cloud_redirect', 'storage')
+      if (!fs.existsSync(storageDir)) continue
+      try {
+        const entries = await this.withRetry(() => fs.readdirSync(storageDir, { withFileTypes: true }))
+        for (const e of entries) {
+          if (!e.isDirectory()) continue
+          const normAcc = this.normalizeAccountId(e.name)
+          if (!normAcc) continue
+          const accPath = path.join(storageDir, e.name)
+          // 仅纳入确实包含至少一个有效游戏存档目录的账号，避免空目录形成幽灵项
+          try {
+            const appEntries = this.withRetrySync(() => fs.readdirSync(accPath, { withFileTypes: true }))
+            const hasAnyAppSave = appEntries.some(
+              appEntry => appEntry.isDirectory() && /^\d+$/.test(appEntry.name) && this.checkHasActualSave(path.join(accPath, appEntry.name))
+            )
+            if (hasAnyAppSave) addAccount(normAcc)
+          } catch {}
+        }
+      } catch {}
+    }
+
+    // 3. 终极兜底：仅当本机彻底扫描不到任何 Steam 账号时，才借用云端记录的 steam_id 供跨机占位展示（并透传给前端复用，避免重复请求）
+    if (foundAccounts.size === 0) {
+      try {
+        const cloudData = await this.listCloudSaves()
+        prefetchedCloudData = cloudData
+        if (cloudData?.data?.apps && Array.isArray(cloudData.data.apps)) {
+          for (const item of cloudData.data.apps) {
+            addAccount(item.steam_id)
+          }
+        }
+      } catch {}
+    }
+
+    // 4. 为不在 loginusers.vdf 中的历史/本地账号补查 Steam userdata/<id>/config/localconfig.vdf 昵称
+    const accounts = Array.from(foundAccounts)
+    if (steamPath) {
+      for (const accId of accounts) {
+        if (!accountNames[accId]) {
+          const localName = this.getLocalConfigPersonaName(steamPath, accId)
+          if (localName) accountNames[accId] = localName
+        }
+      }
+    }
+
+    return prefetchedCloudData !== undefined
+      ? { accounts, accountNames, prefetchedCloudData }
+      : { accounts, accountNames }
+  }
+
+  static async scanAccounts(): Promise<string[]> {
+    const { accounts } = await this.scanAccountsDetailed()
+    return accounts
+  }
+
+  // ================= 本地链：存档扫描（多根目录 + 账号格式兜底 + 重试，彻底消除漏检） =================
+  static async scanSaves(accountId: string): Promise<{ items: any[] }> {
+    const aliases = this.getAccountFolderAliases(accountId)
+    if (aliases.length === 0) return { items: [] }
+
+    const steamPath = await this.resolveSteamPath()
+    const crRoots = this.getCrRootCandidates(steamPath)
+    if (crRoots.length === 0) return { items: [] }
+
+    const foundAppIds = new Set<string>()
+    for (const crRoot of crRoots) {
+      for (const accFolder of aliases) {
+        const accountDir = path.join(crRoot, 'cloud_redirect', 'storage', accFolder)
+        if (!fs.existsSync(accountDir)) continue
+        try {
+          const entries = await this.withRetry(() => fs.readdirSync(accountDir, { withFileTypes: true }))
+          for (const entry of entries) {
+            if (entry.isDirectory() && /^\d+$/.test(entry.name)) {
+              const savePath = path.join(accountDir, entry.name)
+              if (this.checkHasActualSave(savePath)) {
+                foundAppIds.add(entry.name)
+              }
+            }
+          }
+        } catch {}
+      }
     }
 
     const items: any[] = []
     for (const appId of Array.from(foundAppIds).sort()) {
-      const savePath = this.getSaveRoot(steamPath, accountId, appId)
-      const hasLocal = this.checkHasActualSave(savePath)
-      const gameName = this.parseAcfGameName(steamPath, appId)
-      const headerPath = CoverPackService.resolveSteamHeader(appId, steamPath)
+      const savePath = this.resolveExistingSaveDir(steamPath, accountId, appId)
+      const hasLocal = savePath ? this.checkHasActualSave(savePath) : false
+      const gameName = steamPath ? this.parseAcfGameName(steamPath, appId) : null
+      const headerPath = steamPath ? CoverPackService.resolveSteamHeader(appId, steamPath) : null
       const headerImage = headerPath
         ? `titan-img://steam/steam_gate_${appId}?header=1`
         : ''
@@ -616,18 +930,65 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
     }
   }
 
+  // ================= 统一业务错误码归一化（防原始 Axios/Node/7Z 英文穿出到界面） =================
+  private static formatCloudError(e: any, fallback: string): string {
+    const serverMsg = e?.response?.data?.msg
+    if (typeof serverMsg === 'string' && serverMsg.trim()) {
+      return serverMsg.trim()
+    }
+    const raw = String(e?.message || '').trim()
+    if (!raw) return fallback
+
+    const unzipMatch = raw.match(/7Z_EXTRACT_FAILED_CODE_(\d+)/i)
+    if (unzipMatch) return `ERR_UNZIP_FAIL:${unzipMatch[1]}`
+
+    const compressMatch = raw.match(/7Z_COMPRESS_FAILED_CODE_(\d+)/i)
+    if (compressMatch) return `ERR_PACK_FAIL:${compressMatch[1]}`
+
+    if (/^ARCHIVE_NOT_FOUND/i.test(raw)) return 'ERR_INVALID_ARCHIVE'
+    if (/^SRC_DIR_NOT_FOUND/i.test(raw)) return 'ERR_NO_LOCAL_SAVES'
+    if (/^ERR_INVALID_ACCOUNT_OR_APP_ID/i.test(raw)) return 'ERR_INVALID_ACCOUNT_OR_APP_ID'
+
+    if (/^(ERR_|SUCCESS_|TOOLS_|DEPLOY_|ABORTED|BUSY|NETWORK_ERROR|UNKNOWN)/.test(raw)) {
+      return raw
+    }
+
+    const status = e?.response?.status
+    if (status === 401) return 'ERR_SESSION_EXPIRED'
+    if (status === 403) return 'ERR_ACCESS_DENIED'
+    if (status === 429) return 'ERR_TOO_MANY_REQUESTS'
+    if (typeof status === 'number' && status >= 500) return 'ERR_SERVER_BUSY'
+
+    if (e?.code === 'ECONNABORTED' || e?.code === 'ETIMEDOUT' || /timeout/i.test(raw)) {
+      return 'ERR_NETWORK_TIMEOUT'
+    }
+    if (/ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|Network Error/i.test(raw)) {
+      return 'ERR_NETWORK_ERROR'
+    }
+    return fallback
+  }
+
   // ================= 本地链：打包（使用工作目录解耦） =================
   private static async packSaveDir(accountId: string, appId: string): Promise<string> {
-    const detectRes = await SteamDetector.detect()
-    const steamPath = detectRes.path
-    if (!steamPath) throw new Error('ERR_STEAM_PATH')
+    const steamPath = await this.resolveSteamPath()
+    const crRoots = this.getCrRootCandidates(steamPath)
+    if (crRoots.length === 0) throw new Error('ERR_STEAM_PATH')
 
-    const saveDir = this.getSaveRoot(steamPath, accountId, appId)
-    if (!fs.existsSync(saveDir)) throw new Error('ERR_NO_LOCAL_SAVES')
+    const normAcc = this.normalizeAccountId(accountId)
+    if (!normAcc || !/^\d+$/.test(String(appId ?? '').trim())) {
+      throw new Error(`ERR_INVALID_ACCOUNT_OR_APP_ID: invalid accountId (${accountId}) or appId (${appId})`)
+    }
+    const saveDir = await this.withRetry(() => {
+      const resolved = this.resolveExistingSaveDir(steamPath, normAcc, appId)
+      if (!resolved || !fs.existsSync(resolved) || !this.checkHasActualSave(resolved)) {
+        throw new Error('ERR_NO_LOCAL_SAVES')
+      }
+      return resolved
+    }, 2, 150)
 
     this.sanitizeSessionAndEnsureCn(saveDir)
 
-    const gameName = this.parseAcfGameName(steamPath, appId) || `AppID: ${appId}`
+    const gameName = (steamPath ? this.parseAcfGameName(steamPath, appId) : null) || `AppID: ${appId}`
     const metaPath = path.join(saveDir, 'meta.json')
     let metaExisted = false
     if (fs.existsSync(metaPath)) {
@@ -636,8 +997,8 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
       const meta = {
         app_id: appId,
         game_name: gameName,
-        steam_id: accountId,
-        account_id: accountId,
+        steam_id: normAcc,
+        account_id: normAcc,
         packaged_at: new Date().toISOString(),
         source_path: saveDir
       }
@@ -650,6 +1011,10 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
     const zipPath = path.join(tmpDir, `TC${appId}_${Date.now()}.zip`)
     try {
       await ArchiveService.compressDir(saveDir, zipPath)
+      if (!fs.existsSync(zipPath) || fs.statSync(zipPath).size === 0) {
+        try { fs.unlinkSync(zipPath) } catch {}
+        throw new Error('ERR_EMPTY_SAVE_ARCHIVE')
+      }
       return zipPath
     } finally {
       if (!metaExisted) {
@@ -669,15 +1034,25 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
     if (!serverUrl) return { success: false, msg: 'ERR_CLOUD_SERVER_NOT_CONFIGURED' }
     if (!token) return { success: false, msg: 'ERR_LOGIN_REQUIRED' }
 
-    const zipPath = await this.packSaveDir(accountId, appId)
-    const fileSize = fs.statSync(zipPath).size
+    const normAcc = this.normalizeAccountId(accountId)
+    if (!normAcc || !/^\d+$/.test(String(appId ?? '').trim())) {
+      return { success: false, msg: 'ERR_INVALID_ACCOUNT_OR_APP_ID' }
+    }
+
+    let zipPath = ''
 
     try {
+      zipPath = await this.packSaveDir(normAcc, appId)
+      const fileSize = fs.statSync(zipPath).size
+      if (fileSize <= 0) {
+        throw new Error('ERR_EMPTY_SAVE_ARCHIVE')
+      }
+
       const authRes = await axios.post(
         `${serverUrl}/titan/cloudsave.php`,
         {
           action: 'authorize_upload',
-          steam_id: accountId,
+          steam_id: normAcc,
           app_id: appId,
           file_size: fileSize,
           game_name: gameName
@@ -702,20 +1077,30 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
           const bytesRead = fs.readSync(fd, buffer, 0, CHUNK_SIZE, i * CHUNK_SIZE)
           const chunk = buffer.subarray(0, bytesRead)
 
-          await axios.post(`${serverUrl}/titan/cloudsave.php`, chunk, {
+          const postChunk = () => axios.post(`${serverUrl}/titan/cloudsave.php`, chunk, {
             headers: {
               'X-Titan-Token': token,
               'Content-Type': 'application/octet-stream',
               'X-Chunk-Index': String(i),
               'X-Total-Chunks': String(totalChunks),
               'X-App-Id': appId,
-              'X-Steam-Id': accountId,
+              'X-Steam-Id': normAcc,
               'X-Game-Name': encodeURIComponent(gameName)
             },
-            timeout: 30000,
+            timeout: 60000,
             maxBodyLength: Infinity,
             maxContentLength: Infinity
           })
+
+          try {
+            await postChunk()
+          } catch (chunkErr: any) {
+            const status = chunkErr?.response?.status
+            const isNonRetryableClientErr = typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429
+            if (isNonRetryableClientErr) throw chunkErr
+            await new Promise((r) => setTimeout(r, 500))
+            await postChunk()
+          }
         }
       } finally {
         fs.closeSync(fd)
@@ -725,7 +1110,7 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
         `${serverUrl}/titan/cloudsave.php`,
         {
           action: 'confirm_upload',
-          steam_id: accountId,
+          steam_id: normAcc,
           app_id: appId,
           file_size: fileSize,
           game_name: gameName
@@ -743,9 +1128,62 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
       }
       return { success: false, msg: confirmRes.data?.msg || 'ERR_CLOUD_CONFIRM_FAILED' }
     } catch (e: any) {
-      try { fs.unlinkSync(zipPath) } catch {}
+      if (zipPath) {
+        try { fs.unlinkSync(zipPath) } catch {}
+      }
       Logger.error('CloudSaveService', '云存档上传失败:', { accountId, appId, gameName, error: e?.message || e })
-      return { success: false, msg: e.response?.data?.msg || e.message || 'ERR_NETWORK_ERROR' }
+      return { success: false, msg: this.formatCloudError(e, 'ERR_NETWORK_ERROR') }
+    }
+  }
+
+  // ================= 本地链：原子替换存档目录并清洗 CR 元数据 =================
+  private static async replaceSaveDirAtomically(
+    srcRoot: string,
+    targetDir: string,
+    steamPath: string | null,
+    targetAccountId: string,
+    appId: string
+  ): Promise<void> {
+    if (!this.checkHasActualSave(srcRoot)) {
+      throw new Error('ERR_EMPTY_SAVE_ARCHIVE')
+    }
+
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true })
+    const swapBackupDir = `${targetDir}.bak61`
+    if (fs.existsSync(swapBackupDir)) {
+      await this.withRetry(() => fs.rmSync(swapBackupDir, { recursive: true, force: true }), 3, 150)
+    }
+    if (fs.existsSync(targetDir)) {
+      await this.withRetry(() => fs.renameSync(targetDir, swapBackupDir), 3, 150)
+    }
+
+    try {
+      await this.withRetry(() => fs.cpSync(srcRoot, targetDir, { recursive: true }), 3, 150)
+      const metaInTarget = path.join(targetDir, 'meta.json')
+      if (fs.existsSync(metaInTarget)) {
+        try { fs.unlinkSync(metaInTarget) } catch {}
+      }
+      if (!this.checkHasActualSave(targetDir)) {
+        throw new Error('ERR_CLOUD_RESTORE_VERIFY_FAILED')
+      }
+    } catch (swapErr) {
+      // 拷贝或校验失败：立即从 .bak61 回滚旧档，绝不留下损坏或空窗
+      try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch {}
+      if (fs.existsSync(swapBackupDir)) {
+        try { fs.renameSync(swapBackupDir, targetDir) } catch {}
+      }
+      throw swapErr
+    }
+
+    if (fs.existsSync(swapBackupDir)) {
+      try { fs.rmSync(swapBackupDir, { recursive: true, force: true }) } catch {}
+    }
+
+    this.sanitizeSessionAndEnsureCn(targetDir)
+
+    const nativeRemoteCache = steamPath ? this.getNativeRemoteCacheVdfPath(steamPath, targetAccountId, appId) : ''
+    if (nativeRemoteCache && fs.existsSync(nativeRemoteCache)) {
+      try { fs.unlinkSync(nativeRemoteCache) } catch {}
     }
   }
 
@@ -772,12 +1210,12 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
       )
     } catch (e: any) {
       // Round26: 透传后端业务提示（如熔断 500 的中文 msg），不再抛原始 AxiosError 穿 IPC
-      return { success: false, msg: e.response?.data?.msg || e.message || 'ERR_CLOUD_AUTH_FAILED' }
+      return { success: false, msg: this.formatCloudError(e, 'ERR_CLOUD_AUTH_FAILED') }
     }
 
-    const authData = authRes.data
-    if (authData.code !== 200) {
-      return { success: false, msg: authData.msg || 'ERR_CLOUD_URL_FAILED' }
+    const authData = authRes?.data
+    if (!authData || typeof authData !== 'object' || authData.code !== 200) {
+      return { success: false, msg: authData?.msg || 'ERR_CLOUD_URL_FAILED' }
     }
 
     const directUrl = authData.data?.direct_url
@@ -785,39 +1223,163 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
       return { success: false, msg: 'ERR_CLOUD_FILE_GONE' }
     }
 
-    const cloudSteamId = authData.data?.steam_id
-    const targetAccountId = (cloudSteamId && /^\d+$/.test(String(cloudSteamId))) ? String(cloudSteamId) : accountId
+    const cloudSteamId = this.normalizeAccountId(authData.data?.steam_id) || ''
+    const fallbackAccId = this.normalizeAccountId(accountId) || ''
+    // 跨账号恢复：优先写入当前界面选中的本机 Steam 账号目录，仅当未选中账号时兜底使用云端记录的归属 ID
+    const targetAccountId = fallbackAccId || cloudSteamId
+    if (!targetAccountId || !/^\d+$/.test(String(appId ?? '').trim())) {
+      return { success: false, msg: 'ERR_INVALID_ACCOUNT_OR_APP_ID' }
+    }
 
     const tmpDir = path.join(Db.getDataRoot(), 'TitanTemp', 'cloudsave')
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
     const stamp = Date.now()
     const zipPath = path.join(tmpDir, `restore_${appId}_${stamp}.zip`)
     const stageDir = path.join(tmpDir, `restore_${appId}_${stamp}.stage`)
-    let swapDone = false
-    let swapBackupDir = ''
-    let saveTargetDir = ''
 
     try {
-      const response = await axios.get(directUrl, {
-        responseType: 'stream',
-        timeout: 0,
-        headers: { 'User-Agent': 'TitanCore/2.0' }
-      })
+      // 不设总下载时长上限（兼容大存档慢速网络）；仅对连续 15 秒无任何数据到达判定网络超时
+      const IDLE_TIMEOUT_MS = 15000
+      const abortController = new AbortController()
+      let idleTimedOut = false
+
+      let headerTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        idleTimedOut = true
+        abortController.abort()
+      }, IDLE_TIMEOUT_MS)
+
+      let response: any
+      try {
+        response = await axios.get(directUrl, {
+          responseType: 'stream',
+          timeout: 0,
+          signal: abortController.signal,
+          headers: { 'User-Agent': 'TitanCore/2.0' }
+        })
+      } catch (reqErr: any) {
+        if (idleTimedOut) throw new Error('ERR_CLOUD_DOWNLOAD_IDLE_TIMEOUT')
+        throw reqErr
+      } finally {
+        if (headerTimer) {
+          clearTimeout(headerTimer)
+          headerTimer = null
+        }
+      }
 
       await new Promise<void>((resolve, reject) => {
         const writer = fs.createWriteStream(zipPath)
-        response.data.pipe(writer)
-        writer.on('finish', resolve)
-        writer.on('error', reject)
-        response.data.on('error', reject)
+        const stream = response.data
+        let settled = false
+        let streamEnded = false
+        let writerClosed = false
+        let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+        const clearIdleTimer = () => {
+          if (idleTimer) {
+            clearTimeout(idleTimer)
+            idleTimer = null
+          }
+        }
+
+        const failAndCleanup = (err: any) => {
+          if (settled) return
+          settled = true
+          clearIdleTimer()
+          try { stream.destroy() } catch {}
+          if (writerClosed) {
+            reject(err)
+            return
+          }
+          // 等待 WriteStream 真正触发 close 释放句柄，避免 Windows 下 catch 内 unlinkSync 报 EBUSY
+          const fallbackTimer = setTimeout(() => reject(err), 1500)
+          writer.once('close', () => {
+            clearTimeout(fallbackTimer)
+            reject(err)
+          })
+          try {
+            if (!writer.destroyed) writer.destroy()
+          } catch {
+            clearTimeout(fallbackTimer)
+            reject(err)
+          }
+        }
+
+        const resetIdleTimer = () => {
+          clearIdleTimer()
+          idleTimer = setTimeout(() => {
+            idleTimedOut = true
+            try { abortController.abort() } catch {}
+            failAndCleanup(new Error('ERR_CLOUD_DOWNLOAD_IDLE_TIMEOUT'))
+          }, IDLE_TIMEOUT_MS)
+        }
+
+        writer.once('close', () => {
+          writerClosed = true
+        })
+
+        stream.on('data', resetIdleTimer)
+        stream.on('end', () => {
+          streamEnded = true
+          clearIdleTimer()
+        })
+        stream.on('aborted', () => {
+          failAndCleanup(new Error(idleTimedOut ? 'ERR_CLOUD_DOWNLOAD_IDLE_TIMEOUT' : 'ERR_NETWORK_ERROR'))
+        })
+        stream.on('close', () => {
+          if (!settled && !streamEnded) {
+            failAndCleanup(new Error(idleTimedOut ? 'ERR_CLOUD_DOWNLOAD_IDLE_TIMEOUT' : 'ERR_NETWORK_ERROR'))
+          }
+        })
+        stream.on('error', (err: any) => {
+          failAndCleanup(idleTimedOut ? new Error('ERR_CLOUD_DOWNLOAD_IDLE_TIMEOUT') : err)
+        })
+
+        writer.on('finish', () => {
+          if (settled) return
+          if (!streamEnded) {
+            failAndCleanup(new Error('ERR_NETWORK_ERROR'))
+            return
+          }
+          settled = true
+          clearIdleTimer()
+          if (writerClosed) {
+            resolve()
+          } else {
+            const onPostFinishErr = (err: any) => {
+              writer.removeListener('close', onCloseResolve)
+              reject(err)
+            }
+            const onCloseResolve = () => {
+              writer.removeListener('error', onPostFinishErr)
+              resolve()
+            }
+            writer.once('error', onPostFinishErr)
+            writer.once('close', onCloseResolve)
+          }
+        })
+        writer.on('error', (err: any) => {
+          failAndCleanup(err)
+        })
+
+        if (stream.errored) {
+          failAndCleanup(stream.errored)
+          return
+        }
+        if (stream.destroyed && !stream.readableEnded) {
+          failAndCleanup(new Error(idleTimedOut ? 'ERR_CLOUD_DOWNLOAD_IDLE_TIMEOUT' : 'ERR_NETWORK_ERROR'))
+          return
+        }
+
+        resetIdleTimer()
+        stream.pipe(writer)
       })
 
-      const detectRes = await SteamDetector.detect()
-      const steamPath = detectRes.path
-      if (!steamPath) throw new Error('ERR_STEAM_PATH')
+      if (!fs.existsSync(zipPath) || fs.statSync(zipPath).size === 0) {
+        throw new Error('ERR_EMPTY_SAVE_ARCHIVE')
+      }
 
+      const steamPath = await this.resolveSteamPath()
       const targetDir = this.getSaveRoot(steamPath, targetAccountId, appId)
-      saveTargetDir = targetDir // batch61: 提升到函数级，供 catch 回滚使用
       // batch61: 先解到临时 stage 目录，解压成功后才替换目标目录——恢复失败不再清空旧档
       if (fs.existsSync(stageDir)) fs.rmSync(stageDir, { recursive: true, force: true })
 
@@ -825,62 +1387,41 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
 
       fs.unlinkSync(zipPath)
 
-      // batch61: 解压已成功——删 stage 内 meta，然后带备份地替换目标目录（若进程死在替换中途，旧档躺在 <目标>.bak61，手动改名回去即恢复）
-      const metaInStage = path.join(stageDir, 'meta.json')
-      if (fs.existsSync(metaInStage)) {
-        try { fs.unlinkSync(metaInStage) } catch {}
+      // 兼容手工打包连带了最外层 <appId> 目录的情况
+      let extractRoot = stageDir
+      const stageEntries = fs.readdirSync(stageDir, { withFileTypes: true })
+      if (stageEntries.length === 1 && stageEntries[0].isDirectory() && stageEntries[0].name === appId) {
+        extractRoot = path.join(stageDir, appId)
       }
-      fs.mkdirSync(path.dirname(targetDir), { recursive: true })
-      swapBackupDir = `${targetDir}.bak61`
-      if (fs.existsSync(swapBackupDir)) fs.rmSync(swapBackupDir, { recursive: true, force: true })
-      if (fs.existsSync(targetDir)) fs.renameSync(targetDir, swapBackupDir)
-      try {
-        fs.cpSync(stageDir, targetDir, { recursive: true })
-        swapDone = true
-      } catch (swapErr) {
-        // 拷贝中断：旧档还在备份里，立即回滚，绝不留下空窗
-        try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch {}
-        try { fs.renameSync(swapBackupDir, targetDir) } catch {}
-        throw swapErr
-      }
+
+      // batch61: 解压已成功——统一走带备份原子替换（失败自动回滚旧档，无空窗损坏风险）
+      await this.replaceSaveDirAtomically(extractRoot, targetDir, steamPath, targetAccountId, appId)
       fs.rmSync(stageDir, { recursive: true, force: true })
-      fs.rmSync(swapBackupDir, { recursive: true, force: true })
 
-      this.sanitizeSessionAndEnsureCn(targetDir)
-
-      const nativeRemoteCache = this.getNativeRemoteCacheVdfPath(steamPath, targetAccountId, appId)
-      if (fs.existsSync(nativeRemoteCache)) {
-        try { fs.unlinkSync(nativeRemoteCache) } catch {}
+      if (targetAccountId !== fallbackAccId) {
+        return { success: true, msg: `SUCCESS_CLOUD_RESTORED_ALIGNED:${targetAccountId}`, restoredAccountId: targetAccountId } as any
       }
-
-      if (targetAccountId !== accountId) return { success: true, msg: `SUCCESS_CLOUD_RESTORED_ALIGNED:${targetAccountId}` }
-      return { success: true, msg: 'SUCCESS_CLOUD_RESTORED' }
+      return { success: true, msg: 'SUCCESS_CLOUD_RESTORED', restoredAccountId: targetAccountId } as any
     } catch (e: any) {
       try { fs.unlinkSync(zipPath) } catch {}
-      // batch61: 若替换中断（swapDone=false），把 .bak61 里的旧档还原回去
-      try {
-        if (!swapDone && swapBackupDir && fs.existsSync(swapBackupDir)) {
-          try { fs.rmSync(saveTargetDir, { recursive: true, force: true }) } catch {}
-          try { fs.renameSync(swapBackupDir, saveTargetDir) } catch {}
-        }
-      } catch {}
       try { if (fs.existsSync(stageDir)) fs.rmSync(stageDir, { recursive: true, force: true }) } catch {}
       Logger.error('CloudSaveService', '云存档下载恢复失败:', { accountId, appId, error: e?.message || e })
-      return { success: false, msg: e.message || 'ERR_CLOUD_RESTORE_FAILED' }
+      return { success: false, msg: this.formatCloudError(e, 'ERR_CLOUD_RESTORE_FAILED') }
     }
   }
 
   // ================= 本地链：手动打包 =================
   static async manualPack(accountId: string, appId: string): Promise<{ success: boolean; path?: string; msg?: string }> {
-    const zipPath = await this.packSaveDir(accountId, appId)
-
-    const win = this.getActiveWindow()
-    if (!win) {
-      try { fs.unlinkSync(zipPath) } catch {}
-      return { success: false, msg: 'ERR_NO_WINDOW' }
-    }
+    let zipPath = ''
 
     try {
+      zipPath = await this.packSaveDir(accountId, appId)
+
+      const win = this.getActiveWindow()
+      if (!win) {
+        return { success: false, msg: 'ERR_NO_WINDOW' }
+      }
+
       const { filePath } = await dialog.showSaveDialog(win, {
         title: '保存存档备份',
         defaultPath: `TC-${appId}-local.zip`,
@@ -893,12 +1434,12 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
 
       fs.copyFileSync(zipPath, filePath)
 
-      Db.set(`last_export_file_${appId}`, filePath)
-      Db.set('last_export_dir', path.dirname(filePath))
-
       return { success: true, path: filePath }
+    } catch (e: any) {
+      Logger.error('CloudSaveService', '手动打包存档失败:', { accountId, appId, error: e?.message || e })
+      return { success: false, msg: this.formatCloudError(e, 'ERR_PACK_FAIL') }
     } finally {
-      if (fs.existsSync(zipPath)) {
+      if (zipPath && fs.existsSync(zipPath)) {
         try { fs.unlinkSync(zipPath) } catch {}
       }
     }
@@ -928,7 +1469,16 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
     try {
       await ArchiveService.extract(zipPath, tmpDir)
 
-      const metaPath = path.join(tmpDir, 'meta.json')
+      // 兼容用户手工压缩时多包了一层 <appId> 目录的情况
+      let contentRoot = tmpDir
+      const rootEntries = fs.readdirSync(tmpDir, { withFileTypes: true })
+      if (rootEntries.length === 1 && rootEntries[0].isDirectory() && rootEntries[0].name === appId) {
+        contentRoot = path.join(tmpDir, appId)
+      }
+
+      const metaPath = fs.existsSync(path.join(tmpDir, 'meta.json'))
+        ? path.join(tmpDir, 'meta.json')
+        : path.join(contentRoot, 'meta.json')
       let meta: any = {}
       if (fs.existsSync(metaPath)) {
         try {
@@ -936,94 +1486,33 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
         } catch {}
       }
 
-      const metaAppId = String(meta.app_id || appId || '')
-      const metaAccountId = String(meta.account_id || meta.steam_id || '')
-      const gameName = meta.game_name || `AppID: ${metaAppId || appId}`
+      const metaAccountId = this.normalizeAccountId(meta.account_id || meta.steam_id) || ''
 
       if (meta.app_id && String(meta.app_id) !== appId) {
         throw new Error(`ERR_SAVE_MISMATCH:${meta.app_id}`)
       }
 
-      const targetAccountId = (metaAccountId && /^\d+$/.test(metaAccountId)) ? metaAccountId : accountId
-      const isDiffAccount = targetAccountId !== accountId
+      const baseAccountId = this.normalizeAccountId(accountId) || ''
+      // 跨账号恢复：优先写入当前界面的选中账号，仅未选账号时兜底读取包内原账号 ID
+      const targetAccountId = baseAccountId || metaAccountId
+      if (!targetAccountId) {
+        throw new Error(`ERR_INVALID_ACCOUNT_OR_APP_ID: invalid accountId (${accountId})`)
+      }
+      const isDiffAccount = targetAccountId !== baseAccountId
 
-      const detectRes = await SteamDetector.detect()
-      const steamPath = detectRes.path
-      if (!steamPath) throw new Error('ERR_STEAM_PATH')
-
+      const steamPath = await this.resolveSteamPath()
       const targetDir = this.getSaveRoot(steamPath, targetAccountId, appId)
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true })
-      } else {
-        const subEntries = fs.readdirSync(targetDir)
-        for (const sub of subEntries) {
-          fs.rmSync(path.join(targetDir, sub), { recursive: true, force: true })
-        }
+      await this.replaceSaveDirAtomically(contentRoot, targetDir, steamPath, targetAccountId, appId)
+
+      if (isDiffAccount) {
+        return { success: true, msg: `SUCCESS_CLOUD_RESTORED_ALIGNED_LOCAL:${targetAccountId}`, restoredAccountId: targetAccountId } as any
       }
-
-      const entries = fs.readdirSync(tmpDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.name === 'meta.json') continue
-        const src = path.join(tmpDir, entry.name)
-        const dest = path.join(targetDir, entry.name)
-        if (entry.isDirectory()) {
-          this.copyDir(src, dest)
-        } else {
-          fs.copyFileSync(src, dest)
-        }
-      }
-
-      this.sanitizeSessionAndEnsureCn(targetDir)
-
-      const nativeRemoteCache = this.getNativeRemoteCacheVdfPath(steamPath, targetAccountId, appId)
-      if (fs.existsSync(nativeRemoteCache)) {
-        try { fs.unlinkSync(nativeRemoteCache) } catch {}
-      }
-
-      if (isDiffAccount) return { success: true, msg: `SUCCESS_CLOUD_RESTORED_ALIGNED_LOCAL:${targetAccountId}` }
-      return { success: true, msg: 'SUCCESS_CLOUD_RESTORED_LOCAL' }
+      return { success: true, msg: 'SUCCESS_CLOUD_RESTORED_LOCAL', restoredAccountId: targetAccountId } as any
     } catch (e: any) {
-      return { success: false, msg: e.message || 'ERR_CLOUD_RESTORE_FAILED' }
+      return { success: false, msg: this.formatCloudError(e, 'ERR_CLOUD_RESTORE_FAILED') }
     } finally {
       try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch {}
     }
-  }
-
-  // ================= 本地链：打开备份文件/目录 =================
-  static async openLocalSaveFolder(
-    accountId: string,
-    appId: string,
-    options?: { forceUnderlying?: boolean }
-  ): Promise<{ success: boolean; notFound?: boolean; msg?: string }> {
-    if (options?.forceUnderlying) {
-      const detectRes = await SteamDetector.detect()
-      const steamPath = detectRes.path
-      if (!steamPath) return { success: false, msg: 'ERR_STEAM_PATH' }
-
-      const targetDir = this.getSaveRoot(steamPath, accountId, appId)
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true })
-      }
-
-      const err = await shell.openPath(targetDir)
-      if (err) return { success: false, msg: err }
-      return { success: true, msg: 'SUCCESS_OPENED_REDIRECT_DIR' }
-    }
-
-    const lastExportFile = Db.get<string>(`last_export_file_${appId}`)
-    if (lastExportFile && fs.existsSync(lastExportFile)) {
-      shell.showItemInFolder(lastExportFile)
-      return { success: true, msg: 'SUCCESS_LOCATED_BACKUP' }
-    }
-
-    const lastExportDir = Db.get<string>('last_export_dir')
-    if (lastExportDir && fs.existsSync(lastExportDir)) {
-      const err = await shell.openPath(lastExportDir)
-      if (err) return { success: false, msg: err }
-      return { success: true, msg: 'SUCCESS_OPENED_BACKUP_DIR' }
-    }
-
-    return { success: false, notFound: true, msg: 'ERR_NO_LOCAL_BACKUP' }
   }
 
   // ================= 云存档链：删除 =================
@@ -1044,7 +1533,7 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
       }
       return { success: false, msg: res.data?.msg || 'ERR_CLOUD_DELETE_FAILED' }
     } catch (e: any) {
-      return { success: false, msg: e.response?.data?.msg || e.message || 'ERR_NETWORK_ERROR' }
+      return { success: false, msg: this.formatCloudError(e, 'ERR_NETWORK_ERROR') }
     }
   }
 
@@ -1052,14 +1541,24 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
   static async listCloudSaves(): Promise<any> {
     const serverUrl = getServerUrl()
     const token = getAuthToken()
-    if (!serverUrl || !token) return { apps: [], quota: {} }
+    if (!serverUrl || !token) {
+      return { code: 0, error: true, data: { apps: [], quota: {} } }
+    }
 
-    const res = await axios.post(
-      `${serverUrl}/titan/cloudsave.php`,
-      { action: 'list' },
-      { headers: { 'X-Titan-Token': token, 'Content-Type': 'application/json' }, timeout: 15000 }
-    )
-    return res.data
+    try {
+      const res = await axios.post(
+        `${serverUrl}/titan/cloudsave.php`,
+        { action: 'list' },
+        { headers: { 'X-Titan-Token': token, 'Content-Type': 'application/json' }, timeout: 15000 }
+      )
+      if (!res.data || typeof res.data !== 'object') {
+        return { code: 0, error: true, data: { apps: [], quota: {} } }
+      }
+      return res.data
+    } catch (e: any) {
+      Logger.warn('CloudSaveService', '拉取云存档列表失败:', e?.message || e)
+      return { code: 0, error: true, data: { apps: [], quota: {} } }
+    }
   }
 
   // ================= 工具方法 =================
@@ -1077,8 +1576,7 @@ public static setAccountGate(steamPath: string, enabled: boolean, ids: string[])
 export function registerCloudSaveService() {
   ipcMain.removeHandler('cloudsave:scan-accounts')
   ipcMain.handle('cloudsave:scan-accounts', async () => {
-    const accounts = await CloudSaveService.scanAccounts()
-    return { accounts }
+    return await CloudSaveService.scanAccountsDetailed()
   })
 
   ipcMain.removeHandler('cloudsave:scan-saves')
@@ -1104,11 +1602,6 @@ export function registerCloudSaveService() {
   ipcMain.removeHandler('cloudsave:manual-restore')
   ipcMain.handle('cloudsave:manual-restore', async (_e, accountId: string, appId: string) => {
     return await CloudSaveService.manualRestore(accountId, appId)
-  })
-
-  ipcMain.removeHandler('cloudsave:open-local-folder')
-  ipcMain.handle('cloudsave:open-local-folder', async (_e, accountId: string, appId: string) => {
-    return await CloudSaveService.openLocalSaveFolder(accountId, appId)
   })
 
   ipcMain.removeHandler('cloudsave:delete')

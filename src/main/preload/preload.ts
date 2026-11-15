@@ -29,8 +29,6 @@ contextBridge.exposeInMainWorld('electron', {
     showItemInFolder: (filePath: string) => ipcRenderer.invoke('sys:show-item-in-folder', filePath),
     getUserLibrary: () => ipcRenderer.invoke('sys:get-user-library'),
     removeUserLibrary: (resourceId: string) => ipcRenderer.invoke('sys:remove-user-library', resourceId),
-    setManifestNode: (node: string) => ipcRenderer.invoke('sys:set-manifest-node', node),
-    getManifestNode: () => ipcRenderer.invoke('sys:get-manifest-node'),
     runDiagnostics: () => ipcRenderer.invoke('titan:run-diagnostics'),
     launchGame: (appId: string) => ipcRenderer.invoke('titan:launch-game', appId),
     proxyPost: (url: string, body: any) => ipcRenderer.invoke('sys:proxy-post', { url, body }),
@@ -88,7 +86,6 @@ contextBridge.exposeInMainWorld('electron', {
     download: (accountId: string, appId: string) => ipcRenderer.invoke('cloudsave:download', accountId, appId),
     manualPack: (accountId: string, appId: string) => ipcRenderer.invoke('cloudsave:manual-pack', accountId, appId),
     manualRestore: (accountId: string, appId: string) => ipcRenderer.invoke('cloudsave:manual-restore', accountId, appId),
-    openLocalFolder: (accountId: string, appId: string) => ipcRenderer.invoke('cloudsave:open-local-folder', accountId, appId),
     deleteSave: (appId: string) => ipcRenderer.invoke('cloudsave:delete', appId),
     listCloudSaves: () => ipcRenderer.invoke('cloudsave:list'),
     migrateCrStorage: () => ipcRenderer.invoke('cloudsave:migrate-cr')

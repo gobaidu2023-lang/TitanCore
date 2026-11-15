@@ -1037,9 +1037,7 @@
       :results="diagnosticResults" 
       :is-repairing="isRepairingDiagnostics" 
       @close="showDiagnosticsModal = false" 
-      @repair="handleRepairDiagnostics" 
       @repair-env="handleRepairEnvironment" 
-      @migrate-cr="handleMigrateCr" 
     />
 
     <SponsorModal :visible="showSponsor" @close="showSponsor = false" />
@@ -1476,25 +1474,6 @@ const isRunningDiagnostics = ref(false)
 const showDiagnosticsModal = ref(false)
 const isRepairingDiagnostics = ref(false)
 
-const handleRepairDiagnostics = async () => {
-  isRepairingDiagnostics.value = true
-  try {
-    const repairRes = await window.electron.invoke('sys:validate-patterns')
-    await runSystemDiagnostics()
-    if (repairRes?.error) {
-      showNotice(t('settings.repairFetchFailedTitle'), t('settings.repairFetchFailedDesc'), 'error')
-    } else if (Array.isArray(repairRes?.missing) && repairRes.missing.length > 0) {
-      showNotice(t('settings.repairWaitTitle'), t('settings.repairWaitDesc'), 'info')
-    } else if (repairRes?.pulled > 0) {
-      showNotice(t('settings.repairDoneTitle'), t('settings.repairDoneDesc', { count: repairRes.pulled }), 'success')
-    }
-  } catch (e: any) {
-    showNotice(t('settings.repairFailedTitle'), e.message || t('app.unknownError'), 'error')
-  } finally {
-    isRepairingDiagnostics.value = false
-  }
-}
-
 const handleRepairEnvironment = async () => {
   isRepairingDiagnostics.value = true
   try {
@@ -1507,23 +1486,6 @@ const handleRepairEnvironment = async () => {
     }
   } catch (e: any) {
     showNotice(t('settings.repairEnvFailTitle'), e?.message || t('settings.repairEnvFailDesc'), 'error')
-  } finally {
-    isRepairingDiagnostics.value = false
-  }
-}
-
-const handleMigrateCr = async () => {
-  isRepairingDiagnostics.value = true
-  try {
-    const res = await window.electron.cloudsave.migrateCrStorage()
-    await runSystemDiagnostics()
-    if (res?.success) {
-      showNotice(t('settings.crMigrateDoneTitle'), t('settings.crMigrateDoneDesc'), 'success')
-    } else {
-      showNotice(t('settings.crMigrateFailTitle'), tx(res?.error) || t('settings.ostModeUnknown'), 'error')
-    }
-  } catch (e: any) {
-    showNotice(t('settings.crMigrateFailTitle'), tx(e?.message) || t('settings.ostModeUnknown'), 'error')
   } finally {
     isRepairingDiagnostics.value = false
   }

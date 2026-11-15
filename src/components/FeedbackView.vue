@@ -133,6 +133,23 @@
         </div>
 
         <div class="col-span-7 relative flex flex-col items-center justify-center h-full">
+            <!-- 温和全服公告横幅（悬浮于星环上方，不挤压猫咪居中布局） -->
+            <div v-if="feedbackStore.latestBroadcast"
+                 class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[600px] max-h-[140px] overflow-y-auto custom-scrollbar px-5 py-3 rounded-2xl border backdrop-blur-md z-30 transition-all shadow-lg"
+                 :class="currentTheme === 'anime'
+                   ? 'bg-white/90 border-pink-200 text-slate-800 shadow-[0_8px_24px_rgba(244,114,182,0.15)]'
+                   : 'bg-[#0a0a14]/85 border-primary/30 text-slate-200 shadow-[0_0_25px_rgba(0,243,255,0.08)]'">
+                <div class="flex items-center justify-between gap-3 mb-1">
+                    <div class="flex items-center gap-2 font-bold text-xs tracking-wider"
+                         :class="currentTheme === 'anime' ? 'text-pink-600' : 'text-primary'">
+                        <span>📢</span>
+                        <span>{{ feedbackStore.latestBroadcast.title || '系统公告' }}</span>
+                    </div>
+                    <span class="text-[10px] font-code opacity-50">{{ formatTime(feedbackStore.latestBroadcast.created_at) }}</span>
+                </div>
+                <div class="text-xs leading-relaxed whitespace-pre-wrap break-words opacity-90">{{ feedbackStore.latestBroadcast.content }}</div>
+            </div>
+
             <div class="absolute inset-0 z-20 pointer-events-none overflow-visible">
                 <div v-if="particleActive" class="absolute w-8 h-8 rounded-full bg-white shadow-[0_0_30px_white] z-50 transition-all duration-[1500ms] ease-in-out" :class="particleClass"></div>
             </div>
@@ -297,14 +314,17 @@
                              <span class="text-[10px] font-code font-bold" :class="currentTheme === 'anime' ? 'text-slate-400' : 'text-gray-500'">{{ formatTime(log.created_at) }}</span>
                          </div>
                          <div class="text-sm truncate font-medium break-all flex justify-between items-center gap-2" :class="currentTheme === 'anime' ? 'text-slate-700' : 'text-gray-300'">
-                            <span>{{ log.content }}</span>
-                            <span v-if="log.awaiting_reply" class="text-[10px] text-amber-500 animate-pulse border border-amber-500/50 px-1 rounded-sm shrink-0">WAIT</span>
+                            <span class="truncate">{{ log.content }}</span>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                              <span v-if="log.has_unread" class="w-2 h-2 rounded-full bg-pink-500 animate-ping"></span>
+                              <span v-if="log.awaiting_reply" class="text-[10px] text-amber-500 animate-pulse border border-amber-500/50 px-1 rounded-sm">WAIT</span>
+                            </div>
                          </div>
                     </div>
                      <div v-if="allLogs.length > 0" class="pt-4 mt-2 border-t" :class="currentTheme === 'anime' ? 'border-pink-100' : 'border-white/5'">
-                        <button @click="clearHistory" class="w-full text-xs py-2 border border-dashed rounded-lg transition-all"
-                                :class="currentTheme === 'anime' ? 'text-slate-500 hover:text-red-500 border-pink-200 hover:border-red-300' : 'text-gray-600 hover:text-red-400 border-white/10 hover:border-red-400/30'">
-                            {{ t('feedback.clearHistory') }}
+                        <button @click="feedbackStore.syncFromServer()" class="w-full text-xs py-2 border border-dashed rounded-lg transition-all"
+                                :class="currentTheme === 'anime' ? 'text-slate-500 hover:text-pink-600 border-pink-200 hover:border-pink-400' : 'text-gray-500 hover:text-primary border-white/10 hover:border-primary/40'">
+                            🔄 同步最新状态
                         </button>
                     </div>
                 </div>
@@ -323,7 +343,7 @@
                     <span v-if="selectedLog" class="font-code text-xs" :class="currentTheme === 'anime' ? 'text-slate-400' : 'text-gray-500'">Root ID: #{{ selectedLog.id }}</span>
                 </div>
 
-                <div class="flex-1 overflow-y-auto p-10 custom-scrollbar relative z-10 space-y-6">
+                <div ref="chatStreamRef" class="flex-1 overflow-y-auto p-10 custom-scrollbar relative z-10 space-y-6">
                     <div v-if="selectedLog" class="max-w-4xl mx-auto space-y-6">
                         <div v-for="msg in conversationStream" :key="msg.id || msg.created_at" 
                              class="flex gap-4 items-start animate-slide-in-up"
@@ -389,7 +409,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/authStore';
 import { useFeedbackStore } from '../stores/feedbackStore';
 import Swal from 'sweetalert2';
@@ -413,7 +433,9 @@ const particleActive = ref(false);
 const particleClass = ref('top-[50%] left-[5%] opacity-0');
 const cooldown = ref(0);
 const showHistoryModal = ref(false);
-const selectedLog = ref<any>(null);
+const selectedLogId = ref<number | null>(null);
+const selectedLog = computed(() => allLogs.value.find(l => l.id === selectedLogId.value) || null);
+const chatStreamRef = ref<HTMLElement | null>(null);
 const appendContent = ref('');
 const isAppending = ref(false);
 const currentExpression = ref<'normal' | 'wink' | 'happy'> ('normal');
@@ -523,9 +545,28 @@ const conversationStream = computed(() => {
     return stream.sort((a, b) => a.created_at - b.created_at);
 });
 
+function scrollChatToBottom() {
+    nextTick(() => {
+        if (chatStreamRef.value) {
+            chatStreamRef.value.scrollTop = chatStreamRef.value.scrollHeight;
+        }
+    });
+}
+
+watch(() => conversationStream.value.length, () => {
+    if (selectedLogId.value) scrollChatToBottom();
+});
+
+watch(() => feedbackStore.latestBroadcast?.id, (id) => {
+    if (id) feedbackStore.markBroadcastRead();
+});
+
 async function openThread(log: any) {
-    selectedLog.value = log;
+    selectedLogId.value = log.id;
+    feedbackStore.setActiveRoot(log.id);
+    await feedbackStore.markTicketRead(log.id);
     await feedbackStore.fetchThread(log.id);
+    scrollChatToBottom();
 }
 
 function clearHistory() {
@@ -556,16 +597,14 @@ function startCooldown() {
 }
 
 async function initiateLaunch() {
-    if (totalLogs.value >= 20) {
-        tcToast(t('feedback.limitTitle'), t('feedback.limitDesc'), 'warning');
-        return;
-    }
     if (!content.value.trim()) {
         tcToast(t('feedback.emptyTitle'), '', 'warning');
         return;
     }
 
     const authStore = useAuthStore();
+    const payload = { type: feedbackType.value, contact: contact.value, content: content.value.trim(), uid: authStore.user?.id || 0, parent_id: 0 };
+
     gateState.value = 'transmitting';
     triggerCatAction(); 
     particleActive.value = true;
@@ -576,31 +615,27 @@ async function initiateLaunch() {
         if (!isDestroyed) particleClass.value = 'top-[50%] left-[75%] opacity-0 scale-50 bg-primary shadow-[0_0_80px_#00f3ff]';
     }, 50);
     activeTimers.push(t1);
-    
-    const t2 = setTimeout(async () => {
-        const idx = activeTimers.indexOf(t2);
-        if (idx > -1) activeTimers.splice(idx, 1);
-        if (isDestroyed) return;
-        try {
-            const payload = { type: feedbackType.value, contact: contact.value, content: content.value.trim(), uid: authStore.user?.id || 0, parent_id: 0 };
-            await feedbackStore.submitRoot(payload);
 
+    try {
+        await feedbackStore.submitRoot(payload);
+        if (!isDestroyed) {
             tcToast(t('feedback.hajimiOkTitle'), t('feedback.hajimiOkText'), 'success');
-            content.value = ''; 
+            content.value = '';
             startCooldown();
-        } catch (e: any) {
+        }
+    } catch (e: any) {
+        if (!isDestroyed) {
             gateState.value = 'error';
             tcToast(e.message && e.message.includes('频率') ? t('feedback.rateLimitTitle') : t('feedback.crashTitle'), e.message || t('feedback.hajimiCatchFail'), e.message && e.message.includes('频率') ? 'warning' : 'error');
-        } finally {
-            const t3 = setTimeout(() => {
-                const idx2 = activeTimers.indexOf(t3);
-                if (idx2 > -1) activeTimers.splice(idx2, 1);
-                if (!isDestroyed) { gateState.value = 'idle'; particleActive.value = false; }
-            }, 1000);
-            activeTimers.push(t3);
         }
-    }, 1500); 
-    activeTimers.push(t2);
+    } finally {
+        const t3 = setTimeout(() => {
+            const idx2 = activeTimers.indexOf(t3);
+            if (idx2 > -1) activeTimers.splice(idx2, 1);
+            if (!isDestroyed) { gateState.value = 'idle'; particleActive.value = false; }
+        }, 1200);
+        activeTimers.push(t3);
+    }
 }
 
 async function submitAppendData(rootId: number) {
@@ -620,17 +655,20 @@ async function submitAppendData(rootId: number) {
     }
 }
 
-function closeModal() { showHistoryModal.value = false; selectedLog.value = null; }
+function closeModal() { showHistoryModal.value = false; selectedLogId.value = null; feedbackStore.setActiveRoot(null); }
 function formatTime(ts: number) { const d = new Date(ts); return `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; }
 function formatFullTime(ts: number) { const d = new Date(ts); return isNaN(d.getTime()) ? t('feedback.recentLaunch') : d.toLocaleString(); }
 
-onMounted(() => {
+onMounted(async () => {
     generateStars();
     startExpressionLoop();
+    await feedbackStore.syncFromServer();
+    await feedbackStore.markBroadcastRead();
 });
 
 onUnmounted(() => {
     isDestroyed = true;
+    feedbackStore.setActiveRoot(null);
     clearInterval(expressionTimer);
     if (cdIntervalTimer) clearInterval(cdIntervalTimer);
     activeTimers.forEach(clearTimeout);

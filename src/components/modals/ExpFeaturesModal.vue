@@ -14,62 +14,21 @@
         {{ t('settings.exp.title') }}
       </h3>
 
-      <div class="flex flex-col gap-3">
-        <!-- 开启联机 -->
-        <div class="p-4 rounded-lg border flex items-center justify-between transition-colors" :class="cardClass">
-          <span class="text-sm font-bold" :class="cardTextClass">🎮 {{ t('settings.exp.onlineLaunch') }}</span>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div v-for="item in switchItems" :key="item.key" class="p-4 rounded-lg border flex items-center justify-between gap-3 transition-colors" :class="cardClass">
+          <span class="text-sm font-bold truncate" :class="cardTextClass">{{ item.icon }} {{ t(item.labelKey) }}</span>
           <button 
             type="button" 
             role="switch" 
-            :aria-checked="prefEnableOnlineLaunch" 
-            @click="toggle('pref_enable_online_launch')"
-            class="w-10 h-[22px] rounded-full transition-colors relative"
-            :class="prefEnableOnlineLaunch ? switchActiveClass : switchInactiveClass"
+            :aria-checked="item.checked" 
+            @click="toggle(item.key)"
+            class="w-10 h-[22px] rounded-full transition-colors relative cursor-pointer shrink-0"
+            :class="item.checked ? switchActiveClass : switchInactiveClass"
           >
             <span 
               class="absolute top-[3px] w-4 h-4 rounded-full transition-all" 
               :class="[
-                prefEnableOnlineLaunch ? 'left-[21px]' : 'left-[3px]',
-                currentTheme === 'anime' ? 'bg-white' : 'bg-black'
-              ]"
-            ></span>
-          </button>
-        </div>
-        <!-- 导入清单 -->
-        <div class="p-4 rounded-lg border flex items-center justify-between transition-colors" :class="cardClass">
-          <span class="text-sm font-bold" :class="cardTextClass">📥 {{ t('settings.exp.luaImport') }}</span>
-          <button 
-            type="button" 
-            role="switch" 
-            :aria-checked="prefEnableLuaImport" 
-            @click="toggle('pref_enable_lua_import')"
-            class="w-10 h-[22px] rounded-full transition-colors relative"
-            :class="prefEnableLuaImport ? switchActiveClass : switchInactiveClass"
-          >
-            <span 
-              class="absolute top-[3px] w-4 h-4 rounded-full transition-all" 
-              :class="[
-                prefEnableLuaImport ? 'left-[21px]' : 'left-[3px]',
-                currentTheme === 'anime' ? 'bg-white' : 'bg-black'
-              ]"
-            ></span>
-          </button>
-        </div>
-        <!-- 游戏快捷启动 -->
-        <div class="p-4 rounded-lg border flex items-center justify-between transition-colors" :class="cardClass">
-          <span class="text-sm font-bold" :class="cardTextClass">⚡ {{ t('settings.exp.gameFastLaunch') }}</span>
-          <button 
-            type="button" 
-            role="switch" 
-            :aria-checked="prefEnableGameFastLaunch" 
-            @click="toggle('pref_enable_game_fast_launch')"
-            class="w-10 h-[22px] rounded-full transition-colors relative cursor-pointer"
-            :class="prefEnableGameFastLaunch ? switchActiveClass : switchInactiveClass"
-          >
-            <span 
-              class="absolute top-[3px] w-4 h-4 rounded-full transition-all" 
-              :class="[
-                prefEnableGameFastLaunch ? 'left-[21px]' : 'left-[3px]',
+                item.checked ? 'left-[21px]' : 'left-[3px]',
                 currentTheme === 'anime' ? 'bg-white' : 'bg-black'
               ]"
             ></span>
@@ -83,7 +42,9 @@
           <span class="w-[3px] h-[14px] rounded-sm" :class="accentBarClass"></span>
           {{ t('settings.exp.toolsTitle') }}
         </h4>
-        <ToolCard v-for="tool in TOOLS" :key="tool.id" :tool="tool" />
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <ToolCard v-for="tool in TOOLS" :key="tool.id" :tool="tool" />
+        </div>
       </div>
     </div>
   </BaseModal>
@@ -105,12 +66,12 @@ const { currentTheme } = useTheme()
 
 const containerClass = computed(() => {
   if (currentTheme.value === 'anime') {
-    return 'max-w-sm w-full bg-white/95 border-2 border-[#bce8ff] shadow-[0_20px_60px_rgba(180,150,230,0.25)] text-[#1e192b] p-7 relative overflow-hidden'
+    return 'max-w-3xl w-full bg-white/95 border-2 border-[#bce8ff] shadow-[0_20px_60px_rgba(180,150,230,0.25)] text-[#1e192b] p-7 relative overflow-hidden'
   }
   if (currentTheme.value === 'minimal') {
-    return 'max-w-sm w-full bg-[#0b0e1a]/95 border border-[#00f2ff]/30 shadow-[0_0_40px_rgba(0,242,255,0.18)] text-white backdrop-blur-xl p-7 relative overflow-hidden'
+    return 'max-w-3xl w-full bg-[#0b0e1a]/95 border border-[#00f2ff]/30 shadow-[0_0_40px_rgba(0,242,255,0.18)] text-white backdrop-blur-xl p-7 relative overflow-hidden'
   }
-  return 'max-w-sm w-full bg-[#0c0d12]/95 border border-white/10 shadow-[0_16px_48px_rgba(0,0,0,0.85)] text-white p-7 relative overflow-hidden'
+  return 'max-w-3xl w-full bg-[#0c0d12]/95 border border-white/10 shadow-[0_16px_48px_rgba(0,0,0,0.85)] text-white p-7 relative overflow-hidden'
 })
 
 const topGlowClass = computed(() => {
@@ -161,16 +122,30 @@ const switchInactiveClass = computed(() => {
 const libraryStore = useLibraryStore()
 const prefEnableOnlineLaunch = ref(false)
 const prefEnableLuaImport = ref(false)
+const prefLaunchEnhance = ref(false)
+const prefAutoStartTc = ref(false)
 const prefEnableGameFastLaunch = computed(() => libraryStore.prefEnableGameFastLaunch)
+
+const switchItems = computed(() => [
+  { key: 'pref_enable_online_launch', icon: '🎮', labelKey: 'settings.exp.onlineLaunch', checked: prefEnableOnlineLaunch.value },
+  { key: 'pref_enable_lua_import', icon: '📥', labelKey: 'settings.exp.luaImport', checked: prefEnableLuaImport.value },
+  { key: 'pref_enable_game_fast_launch', icon: '⚡', labelKey: 'settings.exp.gameFastLaunch', checked: prefEnableGameFastLaunch.value },
+  { key: 'pref_launch_enhance', icon: '🚀', labelKey: 'settings.exp.launchEnhance', checked: prefLaunchEnhance.value },
+  { key: 'pref_auto_start_tc', icon: '🔄', labelKey: 'settings.exp.autoStartTc', checked: prefAutoStartTc.value }
+])
 
 async function loadPrefs() {
   try {
-    const [o, l] = await Promise.all([
+    const [o, l, le, as] = await Promise.all([
       window.electron.invoke('sys:get-config', 'pref_enable_online_launch'),
-      window.electron.invoke('sys:get-config', 'pref_enable_lua_import')
+      window.electron.invoke('sys:get-config', 'pref_enable_lua_import'),
+      window.electron.invoke('sys:get-config', 'pref_launch_enhance'),
+      window.electron.invoke('sys:get-auto-start')
     ])
     prefEnableOnlineLaunch.value = !!o
     prefEnableLuaImport.value = !!l
+    prefLaunchEnhance.value = !!le
+    prefAutoStartTc.value = !!as
     await libraryStore.loadGameFastLaunchPref()
   } catch { /* 读取失败按默认关 */ }
 }
@@ -179,6 +154,12 @@ async function toggle(key: string) {
   let next = false
   if (key === 'pref_enable_online_launch') next = prefEnableOnlineLaunch.value = !prefEnableOnlineLaunch.value
   else if (key === 'pref_enable_lua_import') next = prefEnableLuaImport.value = !prefEnableLuaImport.value
+  else if (key === 'pref_launch_enhance') next = prefLaunchEnhance.value = !prefLaunchEnhance.value
+  else if (key === 'pref_auto_start_tc') {
+    next = prefAutoStartTc.value = !prefAutoStartTc.value
+    try { await window.electron.invoke('sys:set-auto-start', next) } catch { /* 持久化失败仅影响重启后 */ }
+    return
+  }
   else if (key === 'pref_enable_game_fast_launch') {
     await libraryStore.setGameFastLaunchPref(!libraryStore.prefEnableGameFastLaunch)
     return

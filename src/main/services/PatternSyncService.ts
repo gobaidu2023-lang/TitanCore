@@ -58,8 +58,8 @@ export class PatternSyncService {
     targetRoot: string
   ): Promise<void> {
     const destPath = path.join(targetRoot, target.relativePath)
-    if (fs.existsSync(destPath)) {
-      return // 本地已就绪，跳过
+    if (fs.existsSync(destPath) && fs.statSync(destPath).size > 0) {
+      return // 本地已就绪且非空，跳过
     }
 
     try {
@@ -175,9 +175,25 @@ export class PatternSyncService {
         targets.map(t => this.fetchAndWritePattern(serverUrl, token, t, activeRoot))
       )
 
+      // 3.5 若仍有缺失项，间隔 800ms 自动重试 1 次（应对瞬时网络波动）
+      let pending = targets.filter(t => {
+        const p = path.join(activeRoot, t.relativePath)
+        return !fs.existsSync(p) || fs.statSync(p).size === 0
+      })
+      if (pending.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 800))
+        await Promise.allSettled(
+          pending.map(t => this.fetchAndWritePattern(serverUrl, token, t, activeRoot))
+        )
+      }
+
       // 4. 复核探测结果：【检查活动活根 activeRoot 中的落盘情况】
-      const pulled = targets.filter(t => fs.existsSync(path.join(activeRoot, t.relativePath))).length
-      const missing = targets.filter(t => !fs.existsSync(path.join(activeRoot, t.relativePath))).map(t => t.relativePath)
+      const isReady = (t: PatternTarget) => {
+        const p = path.join(activeRoot, t.relativePath)
+        return fs.existsSync(p) && fs.statSync(p).size > 0
+      }
+      const pulled = targets.filter(isReady).length
+      const missing = targets.filter(t => !isReady(t)).map(t => t.relativePath)
       return { pulled, missing }
     } catch (e: any) {
       console.warn('[PatternSyncService] validatePatterns 运行被安全捕获:', e.message)

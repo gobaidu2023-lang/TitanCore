@@ -364,7 +364,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useAuthStore } from './stores/authStore'
 import { useDiscoveryStore } from './stores/discoveryStore'
 import { useLibraryStore } from './stores/libraryStore'
@@ -425,6 +425,12 @@ const showWelcomeModal = ref(false)
 
 const handleWelcomeComplete = () => {
   showWelcomeModal.value = false
+  if (pendingWelcomeDeepLinkAppId) {
+    const aid = pendingWelcomeDeepLinkAppId
+    pendingWelcomeDeepLinkAppId = ''
+    handleDeepLinkDeploy({ appId: aid })
+    return
+  }
   currentView.value = 'settings'
 }
 
@@ -468,6 +474,71 @@ let unsubSyncComplete: (() => void) | null = null
 let unsubUpdateReady: (() => void) | null = null
 let unsubUpdateError: (() => void) | null = null
 let unsubDepotHealed: (() => void) | null = null
+let unsubDeepLink: (() => void) | null = null
+let unsubAutoLaunchSteam: (() => void) | null = null
+let autoLaunchEnhanceTimer: ReturnType<typeof setTimeout> | null = null
+let lastAutoLaunchAt = 0
+let isAppUnmounted = false
+let authSettled = false
+const authSettledResolvers: Array<() => void> = []
+const unsubAuthSettledFns: Array<() => void> = []
+let pendingWelcomeDeepLinkAppId = ''
+let pendingPostLoginAppId = ''
+
+const markAuthSettled = () => {
+  if (authSettled) return
+  authSettled = true
+  while (authSettledResolvers.length > 0) {
+    authSettledResolvers.shift()?.()
+  }
+}
+
+const waitForAuthSettled = (timeoutMs = 4500) => {
+  if (authSettled || authStore.isLoggedIn || authStore.connectionError) {
+    return Promise.resolve()
+  }
+  return new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const done = () => {
+      if (timer) { clearTimeout(timer); timer = null }
+      resolve()
+    }
+    authSettledResolvers.push(done)
+    timer = setTimeout(done, timeoutMs)
+  })
+}
+
+const handleDeepLinkDeploy = async (payload: { appId?: string } | null | undefined) => {
+  const appId = String(payload?.appId || '').trim()
+  if (!/^\d{3,10}$/.test(appId)) return
+  if (!authStore.isLoggedIn) {
+    pendingPostLoginAppId = appId
+    currentView.value = 'settings'
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 4500,
+      icon: 'info',
+      title: '请先登录 TitanCore 账号',
+      text: `登录后将自动为您打开目标游戏 (AppID: ${appId})`,
+      background: '#0a0f16',
+      color: '#00f3ff'
+    })
+    return
+  }
+  currentView.value = 'nexus_gate'
+  await nextTick()
+  await searchStore.doSearch(appId)
+}
+
+watch(() => authStore.isLoggedIn, (loggedIn) => {
+  if (loggedIn && pendingPostLoginAppId) {
+    const aid = pendingPostLoginAppId
+    pendingPostLoginAppId = ''
+    handleDeepLinkDeploy({ appId: aid })
+  }
+})
 let bootSplashTimer: ReturnType<typeof setTimeout> | null = null
 let bootSplashForceTimer: ReturnType<typeof setTimeout> | null = null
 let welcomeModalTimer: ReturnType<typeof setTimeout> | null = null
@@ -505,6 +576,7 @@ const {
 
 const handleRestartSteam = async () => {
   if (isRestartingSteam.value || isSteamLaunching.value) return
+  lastAutoLaunchAt = Date.now()
   isRestartingSteam.value = true
   try {
     await launchSteamWithGuard({
@@ -696,7 +768,7 @@ const executeEngineUpdate = async () => {
       showEngineUpdateModal.value = false
       Swal.fire({ title: t('app.engineUpdateSuccess'), text: t(res.msg), icon: 'success', background: '#121212', color: '#00f3ff', timer: 3000, showConfirmButton: false })
     } else {
-      Swal.fire({ title: t('app.overwriteFailed'), text: res?.msg || t('app.unknownBlock'), icon: 'error', background: '#121212', color: '#fff' })
+      Swal.fire({ title: t('app.overwriteFailed'), text: res?.msg ? t(res.msg) : t('app.unknownBlock'), icon: 'error', background: '#121212', color: '#fff' })
     }
   } catch (e: any) {
     Swal.fire({ title: t('app.systemError'), text: e.message, icon: 'error', background: '#121212', color: '#fff' })
@@ -889,6 +961,18 @@ onMounted(async () => {
     })
   })
 
+  // 在任何 await 之前提前挂载认证就绪与热启动深链监听，杜绝快速握手时事件漏接
+  unsubAuthSettledFns.push(
+    window.electron.on('auth:bootstrap', markAuthSettled),
+    window.electron.on('auth:ready-guest', markAuthSettled),
+    window.electron.on('auth:session-invalid', markAuthSettled),
+    window.electron.on('auth:status', (d: any) => { if (d?.error) markAuthSettled() })
+  )
+  unsubDeepLink = window.electron.on('titan:deep-link', async (payload: { appId?: string }) => {
+    await waitForAuthSettled(3000)
+    handleDeepLinkDeploy(payload)
+  })
+
   // 3. 防丢失兜底回查（如果同步极快在监听前就结束了，补偿置 ready）
   window.electron.invoke('sys:get-sync-state').then((s: any) => {
     if (s && !s.running && s.lastSyncAt) discoveryStore.setSyncPhase('ready')
@@ -954,10 +1038,43 @@ onMounted(async () => {
     console.warn('[App] 反馈系统初始化跳过:', err)
   }
 
+  unsubAutoLaunchSteam = window.electron.on('titan:auto-launch-steam', () => {
+    const now = Date.now()
+    if (now - lastAutoLaunchAt < 5000 || isFirstLaunchFlag.value) return
+    lastAutoLaunchAt = now
+    launchSteamWithGuard({ silentSuccess: true })
+  })
+
   window.addEventListener('feedback:new-reply', handleFeedbackReply)
+  window.electron.invoke('titan:consume-pending-deeplink').then(async (pending: { appId?: string } | null) => {
+    const appId = String(pending?.appId || '').trim()
+    if (!/^\d{3,10}$/.test(appId)) return
+    if (isFirstLaunch) {
+      pendingWelcomeDeepLinkAppId = appId
+      return
+    }
+    await waitForAuthSettled(4500)
+    handleDeepLinkDeploy({ appId })
+  }).catch(() => {})
+
+  // 启动增强：非首次安装时，等待登录就绪并预留 6 秒宽限时间，自动走纯净模式拉起 Steam
+  if (!isFirstLaunch) {
+    window.electron.invoke('sys:get-config', 'pref_launch_enhance').then(async (enabled: boolean) => {
+      if (!enabled || isAppUnmounted) return
+      await waitForAuthSettled(6000)
+      if (isAppUnmounted) return
+      autoLaunchEnhanceTimer = setTimeout(() => {
+        if (!isAppUnmounted && !isSteamLaunching.value && lastAutoLaunchAt === 0) {
+          lastAutoLaunchAt = Date.now()
+          launchSteamWithGuard({ silentSuccess: true })
+        }
+      }, 6000)
+    }).catch(() => {})
+  }
 })
 
 onUnmounted(() => {
+  isAppUnmounted = true
   window.removeEventListener('titan-navigate', handleNavigationBroadcast)
   window.removeEventListener('feedback:new-reply', handleFeedbackReply)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
@@ -968,6 +1085,12 @@ onUnmounted(() => {
   unsubUpdateReady?.()
   unsubUpdateError?.()
   unsubDepotHealed?.()
+  unsubDeepLink?.()
+  unsubAutoLaunchSteam?.()
+  if (autoLaunchEnhanceTimer) clearTimeout(autoLaunchEnhanceTimer)
+  while (unsubAuthSettledFns.length > 0) {
+    unsubAuthSettledFns.pop()?.()
+  }
   if (bootSplashTimer) clearTimeout(bootSplashTimer)
   if (bootSplashForceTimer) clearTimeout(bootSplashForceTimer)
   if (welcomeModalTimer) clearTimeout(welcomeModalTimer)

@@ -23,6 +23,12 @@ export function handleLaunchFeedback(res: any, onRetry?: () => void) {
     return
   }
 
+  // 0.5 纯净模式启动最终裁决：前置特征码重试后仍失败，弹出警告提示
+  if (res.patternFailed && res.success) {
+    tcToast(t('steam.launcher.patternFailToast'), '', 'warning')
+    if (!res.degraded) return
+  }
+
   // 1. 成功：原生干净启动
   if (res.native && res.success) {
     tcToast(t('steam.launcher.nativeTitle'), t('steam.launcher.nativeDesc'), 'success')

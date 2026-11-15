@@ -23,6 +23,7 @@ export interface ProtocolConfig {
     target_dlls?: string[];
     fast_mode?: boolean;
     expected_engine_version?: number;
+    allow_during_mode_switch?: boolean;
 }
 
 export interface ProtocolResult {
@@ -48,7 +49,8 @@ export class TitanProtocol {
     private static readonly PLUGIN_DIR_NAME_OST = 'lua';
     
     private static deploymentLocks: Map<string, number> = new Map();
-    private static readonly LOCK_TTL_MS = 90000;
+    private static readonly LOCK_TTL_MS = 300000;
+    private static activeGlobalLockToken: symbol | null = null;
     private static readonly GLOBAL_LOCK_KEY = 'GLOBAL_REPAIR';
     private static manifestCacheInMemory: Record<string, Array<{ depotId: string; manifestId: string; ts: number }>> | null = null;
 
@@ -127,20 +129,30 @@ export class TitanProtocol {
             })
         }
         
-        // 5. 游戏配置检测
-        // fix45: pluginDirName 声明随 LUA_DIR 块一并迁入此处（该块依赖它）
+        // 5. 游戏配置检测：若当前活根无 .lua 但另一侧有未迁移的 .lua 才报红（一键修复自动迁入）；均无 .lua 说明尚未入库游戏，保底建好目录并报绿
         const pluginDirName = this.PLUGIN_DIR_NAME_OST
-        const luaDir = path.join(ModeSwitchService.getActiveRoot(steamPath), 'config', pluginDirName)
-        let hasLua = false
-        if (fs.existsSync(luaDir)) {
+        const activeRoot = ModeSwitchService.getActiveRoot(steamPath)
+        const otherRoot = ModeSwitchService.getMode() === 'pure' ? steamPath : ModeSwitchService.ostDir
+        const luaDir = path.join(activeRoot, 'config', pluginDirName)
+        const otherLuaDir = path.join(otherRoot, 'config', pluginDirName)
+        const hasLuaInDir = (dir: string): boolean => {
+            if (!fs.existsSync(dir)) return false
             try {
-                hasLua = fs.readdirSync(luaDir).some(f => f.endsWith('.lua'))
-            } catch {}
+                return fs.readdirSync(dir).some(f => f.toLowerCase().endsWith('.lua'))
+            } catch {
+                return false
+            }
+        }
+        const hasActiveLua = hasLuaInDir(luaDir)
+        const hasOtherLua = hasLuaInDir(otherLuaDir)
+        const gameCfgOk = hasActiveLua || !hasOtherLua
+        if (gameCfgOk && !fs.existsSync(luaDir)) {
+            try { fs.mkdirSync(luaDir, { recursive: true }) } catch {}
         }
         results.push({
             name: 'DIAG_GAME_CFG',
-            ok: hasLua,
-            message: hasLua 
+            ok: gameCfgOk,
+            message: gameCfgOk
                 ? 'DIAG_GAME_CFG_OK'
                 : 'DIAG_GAME_CFG_NOT_READY'
         })
@@ -155,16 +167,21 @@ export class TitanProtocol {
             message: hasLegacyCr ? 'DIAG_CR_STORAGE_MIGRATE' : 'DIAG_CR_STORAGE_OK',
         })
 
-        // 引擎冲突检测：纯净模式下 Steam 根目录严禁残留 xinput1_4 等劫持文件
+        // 引擎冲突检测：与 repairEnvironment 清理清单严格对齐
         const isPureMode = ModeSwitchService.getMode() === 'pure'
         const hasLegacyDiversion = fs.existsSync(path.join(steamPath, 'bin', 'diversion.dll')) || fs.existsSync(path.join(steamPath, 'bin', 'diversion64.dll'))
         const hasPureRootResidue = isPureMode && (
             fs.existsSync(path.join(steamPath, 'xinput1_4.dll')) ||
             fs.existsSync(path.join(steamPath, 'OpenSteamTool.dll')) ||
             fs.existsSync(path.join(steamPath, 'opensteamtool.toml')) ||
+            fs.existsSync(path.join(steamPath, 'cloud_redirect.dll')) ||
             fs.existsSync(path.join(ModeSwitchService.ostDir, 'xinput1_4.dll'))
         )
-        const hasEngineConflict = hasLegacyDiversion || hasPureRootResidue
+        const hasClassicOstResidue = !isPureMode && (
+            fs.existsSync(path.join(ModeSwitchService.ostDir, 'OpenSteamTool.dll')) ||
+            fs.existsSync(path.join(ModeSwitchService.ostDir, 'opensteamtool.toml'))
+        )
+        const hasEngineConflict = hasLegacyDiversion || hasPureRootResidue || hasClassicOstResidue
         results.push({
             name: 'DIAG_ENGINE_CONFLICT',
             ok: !hasEngineConflict,
@@ -384,38 +401,161 @@ export class TitanProtocol {
 
     // ================= [ 核心部署与清理流程 ] =================
 
-    private static translateError(e: any): string {
-        const msg = String(e?.message || e || '').toLowerCase();
-        
+    public static translateError(e: any, fallbackCode = 'ERR_UNKNOWN_DEPLOY'): string {
+        const raw = String(e?.message || e || '').replace(/[\r\n]+/g, ' ').trim();
+        const codeHead = raw.split(':')[0].trim().toUpperCase();
+        const PRESERVED_CODES = new Set([
+            'ERR_RACE_ALL_FAILED',
+            'ERR_NO_TOOL_NODE',
+            'ERR_NO_NODE',
+            'ERR_NO_URLS',
+            'ERR_INVALID_ZIP_HEADER',
+            'ERR_INVALID_ARCHIVE',
+            'ERR_SIZE_TOO_SMALL',
+            'ERR_SHA256_MISMATCH',
+            'ERR_STEAM_MISSING',
+            'ERR_DIR_PERMISSION',
+            'ERR_LOCAL_COMPONENT_MISSING',
+            'ERR_ALL_NODES_DOWN',
+            'ERR_STEAM_LOCKING',
+            'STEAM_STILL_RUNNING',
+            'STEAM_NOT_FOUND',
+            'STEAM_NOT_FOUND_EXE',
+            'TOOLS_PULL_FAIL',
+            'TOOLS_PULL_INCOMPLETE',
+            'TOOLS_MISSING',
+            'DEPLOY_IN_PROGRESS',
+            'DEPLOY_FAIL',
+            'REPAIR_FAIL',
+            'VERIFY_FAIL',
+            'PREREQ_MISSING',
+            'ERR_GATEWAY_EXCEPTION',
+            'ERR_SERVER_REQUIRED',
+            'ERR_NETWORK_ERROR',
+            'NETWORK_ERROR',
+            'BUSY',
+            'BUSY_DEPLOYING',
+            'BAD_ARG',
+            'NO_LEGACY_DATA',
+            'ENV_WRITE_FAIL',
+            'ERR_UNKNOWN',
+            'ERR_ENGINE_SWITCH_FAIL'
+        ]);
+        if (PRESERVED_CODES.has(codeHead)) {
+            const colonIdx = raw.indexOf(':');
+            if (colonIdx === -1) return codeHead;
+            const detail = raw.slice(colonIdx + 1).trim();
+            return detail ? `${codeHead}:${detail}` : codeHead;
+        }
+
+        const unzipMatch = raw.match(/7Z_EXTRACT_FAILED_CODE_(\d+)/i);
+        if (unzipMatch) {
+            return `ERR_UNZIP_EXIT:${unzipMatch[1]}`;
+        }
+
+        const msg = raw.toLowerCase();
         if (msg.includes('enoent') || msg.includes('no such file') || msg.includes('未找到')) {
             return 'ERR_LOCAL_COMPONENT_MISSING';
         }
-        if (msg.includes('network') || msg.includes('timeout') || msg.includes('断开')) {
-            return 'ERR_ALL_NODES_DOWN';
-        }
-        if (msg.includes('eacces') || msg.includes('eperm') || msg.includes('access denied')) {
+        if (msg.includes('eacces') || msg.includes('eperm') || msg.includes('access denied') || msg.includes('permission denied')) {
             return 'ERR_DIR_PERMISSION';
         }
         if (msg.includes('ebusy') || msg.includes('locked')) {
             return 'ERR_STEAM_LOCKING';
         }
-        return 'ERR_UNKNOWN_DEPLOY:' + msg;
+        if (msg.includes('network') || msg.includes('timeout') || msg.includes('econnreset') || msg.includes('econnrefused') || msg.includes('etimedout') || msg.includes('enotfound') || msg.includes('fetch failed') || msg.includes('断开')) {
+            return 'ERR_ALL_NODES_DOWN';
+        }
+        return fallbackCode === 'ERR_UNKNOWN_DEPLOY' ? `ERR_UNKNOWN_DEPLOY:${raw}` : fallbackCode;
     }
 
     private static async killSteam(): Promise<void> {
+        this.broadcast(null, 'protocol.STATUS_KILL_STEAM', 'clean');
+        await ModeSwitchService.ensureSteamDead();
+    }
+
+    private static assertWritableDir(dir: string): void {
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        const probe = path.join(dir, `.tc_probe_${process.pid}_${Date.now()}`);
         try {
-            this.broadcast(null, 'protocol.STATUS_KILL_STEAM', 'clean');
-            WinNative.killProcesses(['steam.exe', 'steamwebhelper.exe', 'crashhandler64.exe', 'crashhandler.exe'], true);
-            await new Promise(resolve => setTimeout(resolve, 1500));
-        } catch (e) {
+            fs.writeFileSync(probe, '1');
+            fs.unlinkSync(probe);
+        } catch (e: any) {
+            const code = String(e?.code || e?.message || '').toUpperCase();
+            if (code.includes('EACCES') || code.includes('EPERM') || code.includes('EROFS')) {
+                throw new Error('ERR_DIR_PERMISSION');
+            }
+            throw e;
         }
     }
     
+    private static prefetchingPromise: Promise<boolean> | null = null;
+
+    static async waitForPrefetch(): Promise<void> {
+        if (this.prefetchingPromise) {
+            try { await this.prefetchingPromise; } catch {}
+        }
+    }
+
+    /**
+     * 后台静默预拉取最新引擎工具包到 %AppData%\titan-core\tools 缓存目录（不杀 Steam、不写活根）
+     */
+    static async prefetchToolsCache(remoteConfig: any): Promise<boolean> {
+        if (this.prefetchingPromise) return this.prefetchingPromise;
+        this.prefetchingPromise = (async () => {
+            if (!remoteConfig || !remoteConfig.success) return false;
+            if (this.hasActiveDeployment() || ModeSwitchService.isBusy()) return false;
+
+            const toolsDir = ModeSwitchService.toolsDir;
+            const expectedVersion = Number(remoteConfig.engine_version || 0);
+            const targetDlls: string[] = Array.isArray(remoteConfig.target_dlls) && remoteConfig.target_dlls.length > 0
+                ? remoteConfig.target_dlls
+                : ['xinput1_4.dll', 'OpenSteamTool.dll', 'cloud_redirect.dll'];
+            const toolMirrors: string[] = Array.isArray(remoteConfig.mirrors) && remoteConfig.mirrors.length > 0
+                ? remoteConfig.mirrors
+                : (remoteConfig.tool_url ? [remoteConfig.tool_url] : []);
+
+            if (this.checkToolsCache(toolsDir, targetDlls, 'ost', expectedVersion)) {
+                return true;
+            }
+            if (toolMirrors.length === 0) return false;
+
+            const taskDir = path.join(this.TEMP_ROOT, `prefetch_${Date.now()}`);
+            try {
+                this.assertWritableDir(toolsDir);
+                fs.mkdirSync(taskDir, { recursive: true });
+                const stagedZip = path.join(taskDir, 'tool.zip');
+                const stageDir = path.join(taskDir, 'tool_stage');
+                await RacingDownloader.raceSmallFile(toolMirrors, { destPath: stagedZip, label: 'LABEL_TOOL_PACK_PREFETCH' });
+                if (this.hasActiveDeployment() || ModeSwitchService.isBusy()) {
+                    return false;
+                }
+                await this.stageAndPromoteToolZip(stagedZip, stageDir, toolsDir, targetDlls, expectedVersion);
+                console.log(`[TitanProtocol] 工具包缓存静默预热完成 v${expectedVersion}`);
+                return true;
+            } catch (e: any) {
+                console.warn('[TitanProtocol] 工具包缓存静默预热跳过:', e?.message || e);
+                return false;
+            } finally {
+                await this.cleanupDirAsync(taskDir);
+            }
+        })();
+
+        try {
+            return await this.prefetchingPromise;
+        } finally {
+            this.prefetchingPromise = null;
+        }
+    }
+
     static releaseLock(key: string): void {
         if (this.deploymentLocks.has(key)) {
             const lockAge = Date.now() - (this.deploymentLocks.get(key) || 0);
             console.log(`[TitanProtocol] 强制释放锁: ${key} (已持有: ${lockAge}ms)`);
             this.deploymentLocks.delete(key);
+            if (key === this.GLOBAL_LOCK_KEY) this.activeGlobalLockToken = null;
         }
     }
 
@@ -540,53 +680,62 @@ export class TitanProtocol {
     }
 
     static async deploy(steamPath: string, config: ProtocolConfig, engine: 'ost' = 'ost'): Promise<ProtocolResult> {
-        if (ModeSwitchService.isBusy()) {
+        if (!config.allow_during_mode_switch && ModeSwitchService.isBusy()) {
             this.broadcast(0, 'protocol.STATUS_MODE_SWITCHING', 'error');
             return { success: false, msg: 'MODE_SWITCHING' };
         }
 
         this.cleanExpiredLocks();
-        
-        const lockKey = this.deploymentLocks.has(config.app_id) ? config.app_id : this.GLOBAL_LOCK_KEY;
-        if (this.deploymentLocks.has(lockKey)) {
-            if (Date.now() - this.deploymentLocks.get(lockKey)! < this.LOCK_TTL_MS) {
-                return { success: false, msg: `DEPLOY_BUSY: Task or Global Repair running.` };
+
+        if (this.deploymentLocks.has(this.GLOBAL_LOCK_KEY)) {
+            if (Date.now() - this.deploymentLocks.get(this.GLOBAL_LOCK_KEY)! < this.LOCK_TTL_MS) {
+                return { success: false, msg: 'DEPLOY_IN_PROGRESS' };
             }
-            this.deploymentLocks.delete(lockKey);
+            this.deploymentLocks.delete(this.GLOBAL_LOCK_KEY);
         }
 
-        this.deploymentLocks.set(config.app_id, Date.now());
+        const lockToken = Symbol('deploy');
+        this.deploymentLocks.set(this.GLOBAL_LOCK_KEY, Date.now());
+        this.activeGlobalLockToken = lockToken;
 
         const taskDir = path.join(this.TEMP_ROOT, `deploy_${config.app_id}_${Date.now()}`);
-        
-        // 关键时机：记录部署前 Steam 是否已在运行（判断是否错过 OST 挂载时机）
-        const isSteamRunningBeforeDeploy = await ModeSwitchService.isSteamAlive();
-
-        // 存量自愈：旧时代 dwmapi 劫持与早期 bin/diversion*.dll 影子克隆已废弃，部署时检测到则静默清理
-        for (const deadFile of ['dwmapi.dll', 'dwmapi.dll.bak', path.join('bin', 'diversion.dll'), path.join('bin', 'diversion64.dll')]) {
-            const deadPath = path.join(steamPath, deadFile);
-            if (fs.existsSync(deadPath)) {
-                try { fs.unlinkSync(deadPath); } catch {}
-            }
-        }
-
-        // 绑定系统自检同款 Pattern 对齐检测与静默自愈（复用 PatternSyncService 现成能力）
-        if (engine === 'ost') {
-            try {
-                const alignCheck = PatternSyncService.diagnoseAlignment(steamPath);
-                if (!alignCheck.ok) {
-                    this.broadcast(8, 'protocol.STATUS_HEAL_PATTERN', 'sync');
-                    await PatternSyncService.validatePatterns();
-                }
-            } catch (err: any) {
-                console.warn('[TitanProtocol] 部署前 Pattern 对齐自愈异常:', err?.message);
-            }
-        }
 
         try {
+            if (!steamPath || !fs.existsSync(steamPath)) {
+                throw new Error('ERR_STEAM_MISSING');
+            }
             if (!fs.existsSync(taskDir)) fs.mkdirSync(taskDir, { recursive: true });
+
+            // 存量自愈：旧时代 dwmapi 劫持与早期 bin/diversion*.dll 影子克隆已废弃，部署时检测到则静默清理
+            for (const deadFile of ['dwmapi.dll', 'dwmapi.dll.bak', path.join('bin', 'diversion.dll'), path.join('bin', 'diversion64.dll')]) {
+                const deadPath = path.join(steamPath, deadFile);
+                if (fs.existsSync(deadPath)) {
+                    try { fs.unlinkSync(deadPath); } catch {}
+                }
+            }
+
+            // 绑定系统自检同款 Pattern 对齐检测与静默自愈（复用 PatternSyncService 现成能力）
+            if (engine === 'ost') {
+                try {
+                    const alignCheck = PatternSyncService.diagnoseAlignment(steamPath);
+                    if (!alignCheck.ok) {
+                        this.broadcast(8, 'protocol.STATUS_HEAL_PATTERN', 'sync');
+                        await PatternSyncService.validatePatterns();
+                    }
+                } catch (err: any) {
+                    console.warn('[TitanProtocol] 部署前 Pattern 对齐自愈异常:', err?.message);
+                }
+            }
             
             const pluginDirName = this.PLUGIN_DIR_NAME_OST;
+            const ostArtifactRoot = ModeSwitchService.getRootSync(steamPath) || steamPath;
+            this.assertWritableDir(steamPath);
+            if (ostArtifactRoot !== steamPath) {
+                this.assertWritableDir(ostArtifactRoot);
+            }
+            if (ModeSwitchService.getMode() === 'pure' && ModeSwitchService.ostDir !== ostArtifactRoot && ModeSwitchService.ostDir !== steamPath) {
+                this.assertWritableDir(ModeSwitchService.ostDir);
+            }
 
             // TC-P32: 源头收敛(Single Source of Truth) -- 纯净模式默认工件剔除 xinput，且收敛过滤入参
             const fallbackDlls = ModeSwitchService.getMode() === 'pure'
@@ -611,32 +760,48 @@ export class TitanProtocol {
             }
 
             if (!skipEnvironmentSetup) {
+                await this.waitForPrefetch();
                 const toolsDir = ModeSwitchService.toolsDir;
-                if (!fs.existsSync(toolsDir)) fs.mkdirSync(toolsDir, { recursive: true });
+                this.assertWritableDir(toolsDir);
                 const toolZipPath = path.join(toolsDir, 'tool.zip');
                 
                 // 优先检查本地 toolsDir 工具包缓存是否齐全
                 let cacheHit = this.checkToolsCache(toolsDir, effectiveTargetDlls, engine, config.expected_engine_version);
 
-                // 若文件未齐全但本地已存在 tool.zip，先尝试本地解压自愈
+                // 若文件未齐全但本地存在有有效版本号证明的 tool.zip，先经隔离暂存区解压校验再覆盖 toolsDir；缺少版本号或损坏时视为过期并重新拉取
                 if (!cacheHit && fs.existsSync(toolZipPath)) {
-                    try {
-                        await ArchiveService.extract(toolZipPath, toolsDir);
-                        cacheHit = this.checkToolsCache(toolsDir, effectiveTargetDlls, engine, config.expected_engine_version);
-                    } catch {}
-                }
-
-                // 仅当本地缓存彻底不存在时，才走网络竞速下载
-                if (!cacheHit) {
-                    if (toolMirrors.length === 0) throw new Error('ERR_NO_TOOL_NODE');
-                    await this.downloadWithMirrors(toolMirrors, toolZipPath, 'LABEL_TOOL_PACK');
-                    this.broadcast(40, 'protocol.STATUS_EXTRACT_COMPONENTS', 'extract');
-                    await ArchiveService.extract(toolZipPath, toolsDir);
+                    let localZipOutdated = false;
+                    const verFile = path.join(toolsDir, 'tool_version.json');
                     if (config.expected_engine_version && config.expected_engine_version > 0) {
+                        localZipOutdated = true;
                         try {
-                            fs.writeFileSync(path.join(toolsDir, 'tool_version.json'), JSON.stringify({ version: config.expected_engine_version, ts: Date.now() }), 'utf-8');
+                            if (fs.existsSync(verFile)) {
+                                const cachedVer = JSON.parse(fs.readFileSync(verFile, 'utf-8'))?.version || 0;
+                                if (cachedVer >= config.expected_engine_version) localZipOutdated = false;
+                            }
+                        } catch {
+                            localZipOutdated = true;
+                        }
+                    } else if (!fs.existsSync(verFile) && toolMirrors.length > 0) {
+                        localZipOutdated = true;
+                    }
+                    if (!localZipOutdated) {
+                        try {
+                            const localStageDir = path.join(taskDir, 'local_tool_stage');
+                            await this.stageAndPromoteToolZip(toolZipPath, localStageDir, toolsDir, effectiveTargetDlls, config.expected_engine_version);
+                            cacheHit = this.checkToolsCache(toolsDir, effectiveTargetDlls, engine, config.expected_engine_version);
                         } catch {}
                     }
+                }
+
+                // 仅当本地缓存不可用时，才走网络竞速下载（先下载并解压到隔离暂存区校验，完整后再覆盖 toolsDir）
+                if (!cacheHit) {
+                    if (toolMirrors.length === 0) throw new Error('ERR_NO_TOOL_NODE');
+                    const stagedToolZip = path.join(taskDir, 'tool.zip');
+                    const stagedToolDir = path.join(taskDir, 'tool_stage');
+                    await this.downloadWithMirrors(toolMirrors, stagedToolZip, 'LABEL_TOOL_PACK');
+                    this.broadcast(40, 'protocol.STATUS_EXTRACT_COMPONENTS', 'extract');
+                    await this.stageAndPromoteToolZip(stagedToolZip, stagedToolDir, toolsDir, effectiveTargetDlls, config.expected_engine_version);
                 } else {
                     this.broadcast(40, 'protocol.STATUS_CACHE_HIT', 'check');
                 }
@@ -644,7 +809,6 @@ export class TitanProtocol {
                 await this.killSteam();
 
                 this.broadcast(60, 'protocol.STATUS_VERIFY_IO', 'install');
-                const ostArtifactRoot = ModeSwitchService.getRootSync(steamPath) || steamPath;
 
                 // TC-P32: 纯净模式下执行双根物理净化(tc/ost 与 Steam 根)，彻底铲除历史 xinput 及其备份残留 (带退避重试)
                 if (ModeSwitchService.getMode() === 'pure') {
@@ -682,12 +846,13 @@ export class TitanProtocol {
                     }
                 } catch {}
 
-                // 全量更新工具包成功后，持久化对齐的引擎版号
+                // 全量更新工具包成功后，持久化对齐的引擎版号与就绪状态
                 if (config.expected_engine_version && config.expected_engine_version > 0) {
                     const oldCfg = Db.get<any>(`engine_config_${engine}`) || {};
                     Db.set(`engine_config_${engine}`, {
                         ...oldCfg,
                         version: config.expected_engine_version,
+                        engine_status: 'ready',
                         updated_at: Date.now()
                     });
                 }
@@ -707,15 +872,20 @@ export class TitanProtocol {
                 this.broadcast(80, 'protocol.STATUS_NO_MANIFEST', 'init');
             }
 
-            this.cleanupSync(taskDir);
+            await this.cleanupDirAsync(taskDir);
             this.broadcast(100, 'protocol.STATUS_DEPLOY_DONE', 'done');
             return { success: true, msg: 'DEPLOY_OK', path: steamPath, needRestartSteam: false };
 
         } catch (e: any) {
-            this.cleanupSync(taskDir);
-            this.broadcast(0, `protocol.STATUS_DEPLOY_FAIL:${this.translateError(e)}`, 'error');
-            return { success: false, msg: this.translateError(e) };
+            await this.cleanupDirAsync(taskDir);
+            const translatedErr = this.translateError(e);
+            this.broadcast(0, `protocol.STATUS_DEPLOY_FAIL:${translatedErr}`, 'error');
+            return { success: false, msg: translatedErr };
         } finally {
+            if (this.activeGlobalLockToken === lockToken) {
+                this.activeGlobalLockToken = null;
+                this.deploymentLocks.delete(this.GLOBAL_LOCK_KEY);
+            }
             this.deploymentLocks.delete(config.app_id);
         }
     }
@@ -972,12 +1142,69 @@ export class TitanProtocol {
         return null;
     }
 
-    private static cleanupSync(dir: string) {
-        if (fs.existsSync(dir)) {
-            try { 
-                fs.rmSync(dir, { recursive: true, force: true }); 
+    private static cleanEngineArtifactsInDir(dir: string): void {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                this.cleanEngineArtifactsInDir(full);
+                try {
+                    if (fs.readdirSync(full).length === 0) fs.rmdirSync(full);
+                } catch {}
+            } else {
+                const lower = entry.name.toLowerCase();
+                if (lower.endsWith('.dll') || lower === 'opensteamtool.toml') {
+                    fs.unlinkSync(full);
+                }
+            }
+        }
+    }
+
+    private static async stageAndPromoteToolZip(
+        zipPath: string,
+        stageDir: string,
+        toolsDir: string,
+        targetDlls: string[],
+        expectedEngineVersion?: number
+    ): Promise<void> {
+        await ArchiveService.extract(zipPath, stageDir);
+        for (const dll of targetDlls) {
+            if (!this.findDllInDir(stageDir, dll)) {
+                throw new Error('TOOLS_PULL_INCOMPLETE');
+            }
+        }
+        if (!fs.existsSync(path.join(stageDir, 'opensteamtool.toml'))) {
+            throw new Error('TOOLS_PULL_INCOMPLETE');
+        }
+        const destZipPath = path.join(toolsDir, 'tool.zip');
+        await this.retryFileOpAsync(() => {
+            this.cleanEngineArtifactsInDir(toolsDir);
+            fs.cpSync(stageDir, toolsDir, { recursive: true, force: true });
+            if (path.resolve(zipPath).toLowerCase() !== path.resolve(destZipPath).toLowerCase()) {
+                fs.copyFileSync(zipPath, destZipPath);
+            }
+            if (expectedEngineVersion && expectedEngineVersion > 0) {
+                fs.writeFileSync(
+                    path.join(toolsDir, 'tool_version.json'),
+                    JSON.stringify({ version: expectedEngineVersion, ts: Date.now() }),
+                    'utf-8'
+                );
+            }
+        });
+    }
+
+    private static async cleanupDirAsync(dir: string) {
+        if (!fs.existsSync(dir)) return;
+        for (let i = 0; i < 3; i++) {
+            try {
+                fs.rmSync(dir, { recursive: true, force: true });
+                return;
             } catch (e: any) {
-                console.warn(`[TitanProtocol] 临时目录残留清理失败: ${e.message}，已忽略`);
+                if (i === 2) {
+                    console.warn(`[TitanProtocol] 临时目录残留清理失败: ${e?.message || e}，将在下次启动回收`);
+                    return;
+                }
+                await this.delay(250 * (i + 1));
             }
         }
     }

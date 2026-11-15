@@ -3,6 +3,7 @@
 // 规范: 彻底解耦 CR 依赖、复用 deploy 安装语义纯覆盖安装、加固 dev 开发环境回退
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFile } from 'node:child_process'
 import { Db } from '../db'
 import { app } from 'electron'
 import { SteamDetector } from './SteamDetector'
@@ -10,6 +11,9 @@ import { PatternSyncService } from './PatternSyncService'
 import { Logger } from '../utils/logger'
 import { CloudSaveService } from './CloudSaveService'
 import { WinNative } from '../utils/winNative'
+import { TitanProtocol } from './TitanProtocol'
+import { EngineService } from './EngineService'
+import { resolve7zExePath } from '../utils/resolve7z'
 
 const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
@@ -37,62 +41,32 @@ export class ModeSwitchService {
     return this.isSteamRunning()
   }
 
-  private static deployBusyFn: (() => boolean) | null = null
-  static setDeployBusyChecker(fn: () => boolean): void {
-    this.deployBusyFn = fn
-  }
-
-  private static deployTrigger: (() => Promise<{ success: boolean; error?: string }>) | null = null
-  static setDeployTrigger(fn: () => Promise<{ success: boolean; error?: string }>): void {
-    this.deployTrigger = fn
-  }
-
-  // 改造：自检必要基础运行件（CR 钉死 ostDir，不作为切换阻塞条件）
+  // 自检 %AppData%\titan-core\tools 基础运行件缓存是否完整（缺失时尝试本地 tool.zip 自愈解压）
   private static toolsCacheReady(): boolean {
     const required = ['OpenSteamTool.dll', 'xinput1_4.dll', 'cloud_redirect.dll', 'opensteamtool.toml']
-    if (required.every(f => !!this.findInDir(this.toolsDir, f))) return true
+    let ready = required.every(f => !!this.findInDir(this.toolsDir, f))
 
-    // 本地缓存自愈：若工具目录缺失散装文件但存在已下载的 tool.zip，先走本地解压
-    const localZip = path.join(this.toolsDir, 'tool.zip')
-    if (fs.existsSync(localZip)) {
-      try {
-        const { execFileSync } = require('node:child_process')
-        const { resolve7z } = require('../utils/resolve7z')
-        const z = resolve7z()
-        if (z?.sevenZipPath && fs.existsSync(z.sevenZipPath)) {
-          execFileSync(z.sevenZipPath, ['x', localZip, `-o${this.toolsDir}`, '-y', '-aoa'], { timeout: 30000, windowsHide: true })
-          if (required.every(f => !!this.findInDir(this.toolsDir, f))) return true
-        }
-      } catch {}
-    }
-    return false
-  }
-
-  // 改造：加固全环境穿透。若 userData 下无完整包，自动穿透寻找各安装与资源目录下的 tools
-  static get toolsDir(): string { 
-    const defaultTools = path.join(app.getPath('userData'), 'tools');
-    if (!this.checkDirHasTools(defaultTools)) {
-      const candidates = [
-        path.join(app.getAppPath(), 'tools'),
-        path.join(app.getAppPath(), 'resources', 'tools'),
-        path.join(process.cwd(), 'tools'),
-        path.join(process.cwd(), 'resources', 'tools'),
-        path.join(path.dirname(process.execPath), 'resources', 'tools'),
-        path.join(path.dirname(process.execPath), 'tools'),
-        path.join(process.resourcesPath || '', 'tools')
-      ];
-      for (const cand of candidates) {
-        if (this.checkDirHasTools(cand)) {
-          return cand;
-        }
+    if (!ready) {
+      // 本地缓存自愈：若工具目录缺失散装文件但存在已下载的 tool.zip，先走本地解压
+      const localZip = path.join(this.toolsDir, 'tool.zip')
+      if (fs.existsSync(localZip)) {
+        try {
+          const { execFileSync } = require('node:child_process')
+          const sevenZipExe = resolve7zExePath()
+          if (sevenZipExe && fs.existsSync(sevenZipExe)) {
+            execFileSync(sevenZipExe, ['x', localZip, `-o${this.toolsDir}`, '-y', '-aoa'], { timeout: 30000, windowsHide: true })
+            ready = required.every(f => !!this.findInDir(this.toolsDir, f))
+          }
+        } catch {}
       }
     }
-    return defaultTools;
+
+    return ready
   }
 
-  private static checkDirHasTools(dir: string): boolean {
-    if (!dir || !fs.existsSync(dir)) return false;
-    return !!(this.findInDir(dir, 'OpenSteamTool.dll') && this.findInDir(dir, 'xinput1_4.dll'));
+  // 固定使用唯一可写缓存目录 %AppData%\titan-core\tools，杜绝穿透命中安装/资源目录下的旧包或只读目录
+  static get toolsDir(): string {
+    return path.join(app.getPath('userData'), 'tools')
   }
 
   // 改造：按 deploy 纯覆盖语义分发运行核心件；若 ostDir 缺少 CR 则按需由 tools 补齐，不碰 Steam 根
@@ -151,22 +125,48 @@ export class ModeSwitchService {
     }
   }
 
-  // 经典模式下自动将 tools 最新核心件覆盖同步至 Steam 根，并清理旧遗产文件
-  static async syncClassicArtifacts(steamPath: string): Promise<void> {
+  // 经典模式纯本地毫秒级兜底：清理旧遗产文件，仅当活根缺失核心件时才从本地 tools 缓存补齐缺失项，绝不联网或重复写盘
+  static async ensureClassicRootFromLocalCache(steamPath: string): Promise<void> {
     if (!steamPath || this.getMode() !== 'classic') return
     await this.cleanLegacyDiversionFiles(steamPath)
-    if (!this.toolsCacheReady()) return
-    await this.deployArtifactsToRoot(steamPath)
+
+    const missingDlls = ['OpenSteamTool.dll', 'xinput1_4.dll'].filter(
+      dll => !fs.existsSync(path.join(steamPath, dll))
+    )
     const tomlPath = path.join(steamPath, 'opensteamtool.toml')
-    if (!fs.existsSync(tomlPath)) {
-      await this.installTomlToRoot(steamPath)
+    const missingToml = !fs.existsSync(tomlPath)
+    const ostCrPath = path.join(this.ostDir, 'cloud_redirect.dll')
+    const missingCr = !fs.existsSync(ostCrPath)
+
+    if (missingDlls.length === 0 && !missingToml && !missingCr) return
+    if (!this.toolsCacheReady()) return
+
+    for (const dll of missingDlls) {
+      const src = this.findInDir(this.toolsDir, dll)
+      if (!src) continue
+      const dst = path.join(steamPath, dll)
+      await this.retryOp(() => fs.copyFileSync(src, dst))
     }
-    this.setTomlKey(tomlPath, 'diversion', 'enabled', 'false')
+
+    if (missingCr) {
+      const crSrc = this.findInDir(this.toolsDir, 'cloud_redirect.dll')
+      if (crSrc) {
+        if (!fs.existsSync(this.ostDir)) fs.mkdirSync(this.ostDir, { recursive: true })
+        try { fs.copyFileSync(crSrc, ostCrPath) } catch {}
+      }
+    }
+
+    if (missingToml) {
+      await this.installTomlToRoot(steamPath)
+      this.setTomlKey(tomlPath, 'diversion', 'enabled', 'false')
+      const cloudEnabled = Db.get<boolean>('user_pref_cloud_save') ?? true
+      this.setTomlKey(tomlPath, 'cloud', 'enabled', cloudEnabled ? 'true' : 'false')
+    }
   }
 
-  // TC: 一键初始化环境修复（系统自检 dll/toml 缺失入口；强杀 -> 铺文件 -> 重跑诊断全绿）
+  // TC: 按需环境修复（先体检定位具体故障项：仅涉及核心件/看门狗/冲突/Lua 迁移时才关闭 Steam 重铺文件；CR/TOML/节点只做轻量修复并如实返回成败）
   static async repairEnvironment(): Promise<{ success: boolean; error?: string }> {
-    if (this.busy || (this.deployBusyFn && this.deployBusyFn())) {
+    if (this.busy || TitanProtocol.hasActiveDeployment()) {
       return { success: false, error: 'BUSY_DEPLOYING' }
     }
 
@@ -176,103 +176,132 @@ export class ModeSwitchService {
       const steamPath = det?.path
       if (!steamPath) return { success: false, error: 'STEAM_NOT_FOUND' }
 
-      await this.ensureSteamDead()
+      const diagResults = await TitanProtocol.runDiagnostics(steamPath, 'ost', EngineService.getManifestProbeResult())
+      const isOk = (name: string) => diagResults.find(r => r.name === name)?.ok ?? true
+      const needsDllRepair = !isOk('DIAG_OST_DLL')
+      const needsCoreRepair = needsDllRepair || !isOk('DIAG_GAME_CFG') || !isOk('DIAG_ENGINE_CONFLICT') || !isOk('DIAG_OST_WATCHDOG')
+      const needsCrMigrate = !isOk('DIAG_CR_STORAGE_LEGACY')
+      const needsNodeProbe = !isOk('DIAG_MANIFEST_URL') || !EngineService.getManifestProbeResult()?.url
 
-      // 优先尝试向云端拉取最新工具包（若网络离线且本地已有缓存则用本地缓存兜底，缺缓存且拉取失败才报错）
-      if (this.deployTrigger) {
-        this.busy = false
-        const pull = await this.deployTrigger().catch((err: any) => ({ success: false, error: err?.message }))
-        this.busy = true
-        if (!pull?.success && !this.toolsCacheReady()) {
-        Logger.error('ModeSwitchService', '模式切换失败: 工具包拉取失败', pull?.error)
-          return { success: false, error: 'TOOLS_PULL_FAIL:' + (pull?.error || '') }
-        }
-      } else if (!this.toolsCacheReady()) {
-        return { success: false, error: 'DEPLOY_TRIGGER_MISSING' }
-      }
+      if (needsCoreRepair) {
+        await this.ensureSteamDead()
+        await TitanProtocol.waitForPrefetch()
 
-      // TC-P32: 一键环境修复时，纯净模式必须强力净化 Steam 根，杜绝代理残留与注入器冲突
-      await this.cleanLegacyDiversionFiles(steamPath)
-
-      // 清理 TC\ost\modules 下看门狗监测到的泄露垃圾目录（解决 DIAG_OST_WATCHDOG 红灯死循环）
-      const modulesDir = path.join(this.ostDir, 'modules')
-      for (const stray of ['config', 'logs', 'appcache']) {
-        const strayPath = path.join(modulesDir, stray)
-        if (fs.existsSync(strayPath)) {
-          await this.retryOp(() => fs.rmSync(strayPath, { recursive: true, force: true })).catch(() => {})
-        }
-      }
-
-      const steamLua = path.join(steamPath, 'config', 'lua')
-      const pureLua = path.join(this.ostDir, 'config', 'lua')
-      if (this.getMode() === 'pure') {
-        // 纯净模式：若 Steam 根目录仍有未迁入的 lua 或 opensteamtool 目录，先自动合并搬入 TC\ost 并校验后再清理
-        if (fs.existsSync(steamLua)) {
-          fs.mkdirSync(pureLua, { recursive: true })
-          await this.copyDir(steamLua, pureLua).catch(() => {})
-          const srcFiles = fs.readdirSync(steamLua).filter(f => f.toLowerCase().endsWith('.lua'))
-          if (srcFiles.every(f => fs.existsSync(path.join(pureLua, f)))) {
-            await this.retryOp(() => fs.rmSync(steamLua, { recursive: true, force: true })).catch(() => {})
+        if (needsDllRepair || !this.toolsCacheReady()) {
+          // 优先尝试向云端拉取最新工具包（若网络离线且本地已有缓存则用本地缓存兜底，缺缓存且拉取失败才报错）
+          const pull = await EngineService.pullLatest('ost', true).catch((err: any) => ({ success: false, error: err?.message }))
+          if (!pull?.success && !this.toolsCacheReady()) {
+            Logger.error('ModeSwitchService', '环境修复失败: 工具包拉取失败且本地无可用缓存', pull?.error)
+            return { success: false, error: pull?.error ? TitanProtocol.translateError(pull.error, 'TOOLS_PULL_FAIL') : 'TOOLS_PULL_FAIL' }
           }
         }
-        const legacyOst = path.join(steamPath, 'opensteamtool')
-        const pureOst = path.join(this.ostDir, 'opensteamtool')
-        if (fs.existsSync(legacyOst)) {
-          fs.mkdirSync(pureOst, { recursive: true })
-          await this.copyDir(legacyOst, pureOst).catch(() => {})
-          await this.retryOp(() => fs.rmSync(legacyOst, { recursive: true, force: true })).catch(() => {})
+
+        // TC-P32: 一键环境修复时，纯净模式必须强力净化 Steam 根，杜绝代理残留与注入器冲突
+        await this.cleanLegacyDiversionFiles(steamPath)
+
+        // 清理 TC\ost\modules 下看门狗监测到的泄露垃圾目录（解决 DIAG_OST_WATCHDOG 红灯死循环）
+        const modulesDir = path.join(this.ostDir, 'modules')
+        for (const stray of ['config', 'logs', 'appcache']) {
+          const strayPath = path.join(modulesDir, stray)
+          if (fs.existsSync(strayPath)) {
+            await this.retryOp(() => fs.rmSync(strayPath, { recursive: true, force: true })).catch(() => {})
+          }
         }
-        for (const f of ['OpenSteamTool.dll', 'OpenSteamTool.dll.bak', 'xinput1_4.dll', 'xinput1_4.dll.bak', 'opensteamtool.toml', 'opensteamtool.toml.bak', 'dwmapi.dll', 'dwmapi.dll.bak', 'cloud_redirect.dll', 'cloud_redirect.log']) {
-          await this.retryOp(() => {
-            const p = path.join(steamPath, f)
-            if (fs.existsSync(p)) fs.unlinkSync(p)
-          }).catch(() => {})
+
+        const steamLua = path.join(steamPath, 'config', 'lua')
+        const pureLua = path.join(this.ostDir, 'config', 'lua')
+        if (this.getMode() === 'pure') {
+          // 纯净模式：若 Steam 根目录仍有未迁入的 lua 或 opensteamtool 目录，先自动合并搬入 TC\ost 并校验后再清理
+          if (fs.existsSync(steamLua)) {
+            fs.mkdirSync(pureLua, { recursive: true })
+            await this.copyDir(steamLua, pureLua).catch(() => {})
+            const srcFiles = fs.readdirSync(steamLua).filter(f => f.toLowerCase().endsWith('.lua'))
+            if (srcFiles.every(f => fs.existsSync(path.join(pureLua, f)))) {
+              await this.retryOp(() => fs.rmSync(steamLua, { recursive: true, force: true })).catch(() => {})
+            }
+          }
+          const legacyOst = path.join(steamPath, 'opensteamtool')
+          const pureOst = path.join(this.ostDir, 'opensteamtool')
+          if (fs.existsSync(legacyOst)) {
+            fs.mkdirSync(pureOst, { recursive: true })
+            await this.copyDir(legacyOst, pureOst).catch(() => {})
+            await this.retryOp(() => fs.rmSync(legacyOst, { recursive: true, force: true })).catch(() => {})
+          }
+          for (const f of ['OpenSteamTool.dll', 'OpenSteamTool.dll.bak', 'xinput1_4.dll', 'xinput1_4.dll.bak', 'opensteamtool.toml', 'opensteamtool.toml.bak', 'dwmapi.dll', 'dwmapi.dll.bak', 'cloud_redirect.dll', 'cloud_redirect.log']) {
+            await this.retryOp(() => {
+              const p = path.join(steamPath, f)
+              if (fs.existsSync(p)) fs.unlinkSync(p)
+            }).catch(() => {})
+          }
+        } else {
+          // 经典模式：若 TC\ost\config\lua 存在 lua 文件，顺手合并补回 Steam\config\lua
+          if (fs.existsSync(pureLua)) {
+            fs.mkdirSync(steamLua, { recursive: true })
+            await this.copyDir(pureLua, steamLua).catch(() => {})
+          }
+          for (const f of ['OpenSteamTool.dll', 'opensteamtool.toml']) {
+            await this.retryOp(() => {
+              const p = path.join(this.ostDir, f)
+              if (fs.existsSync(p)) fs.unlinkSync(p)
+            }).catch(() => {})
+          }
         }
-      } else {
-        // 经典模式：若 TC\ost\config\lua 存在 lua 文件，顺手合并补回 Steam\config\lua
-        if (fs.existsSync(pureLua)) {
-          fs.mkdirSync(steamLua, { recursive: true })
-          await this.copyDir(pureLua, steamLua).catch(() => {})
+
+        const activeRoot = this.getActiveRoot(steamPath)
+        const activeLuaDir = path.join(activeRoot, 'config', 'lua')
+        if (!fs.existsSync(activeLuaDir)) {
+          fs.mkdirSync(activeLuaDir, { recursive: true })
         }
-        for (const f of ['OpenSteamTool.dll', 'opensteamtool.toml']) {
-          await this.retryOp(() => {
-            const p = path.join(this.ostDir, f)
-            if (fs.existsSync(p)) fs.unlinkSync(p)
-          }).catch(() => {})
+
+        // lay down core dlls + base toml + CR
+        await this.deployArtifactsToRoot(activeRoot)
+        await this.installTomlToRoot(activeRoot)
+
+        // restore diversion flag and cloud-save toggle
+        const tomlNow = path.join(activeRoot, 'opensteamtool.toml')
+        this.setTomlKey(tomlNow, 'diversion', 'enabled', this.getMode() === 'pure' ? 'true' : 'false')
+        const cloudEnabled = Db.get<boolean>('user_pref_cloud_save') ?? true
+        this.setTomlKey(tomlNow, 'cloud', 'enabled', cloudEnabled ? 'true' : 'false')
+        if (app.isPackaged) {
+          this.setTomlKey(tomlNow, 'log', 'level', '"info"')
+        }
+        CloudSaveService.setTomlCloudEnabled(steamPath, cloudEnabled)
+      }
+
+      // 迁移存量旧云存档并固死 CR_STATE_DIR 环境变量（如实检查迁移结果，不吞错）
+      if (needsCrMigrate || fs.existsSync(path.join(steamPath, 'cloud_redirect')) || fs.existsSync(path.join(steamPath, 'cloud_redirect.log'))) {
+        const migRes = await CloudSaveService.migrateCrStorage()
+        if (!migRes?.success && migRes?.error !== 'NO_LEGACY_DATA') {
+          return { success: false, error: migRes?.error || 'VERIFY_FAIL' }
+        }
+      }
+      if (needsCoreRepair || needsCrMigrate || process.env.CR_STATE_DIR !== this.ostDir) {
+        process.env.CR_STATE_DIR = this.ostDir
+        CloudSaveService.writeCrStateDirEnv(this.ostDir)
+      }
+
+      // 特征码对齐同步（如实校验对齐结果，离线/未登录直接报真实错误）
+      if (!PatternSyncService.diagnoseAlignment(steamPath).ok) {
+        const patRes = await PatternSyncService.validatePatterns()
+        if (patRes?.error) {
+          return { success: false, error: patRes.error }
+        }
+        if (!PatternSyncService.diagnoseAlignment(steamPath).ok) {
+          return { success: false, error: 'NETWORK_ERROR' }
         }
       }
 
-      const activeRoot = this.getActiveRoot(steamPath)
-
-      // lay down core dlls + base toml + CR
-      await this.deployArtifactsToRoot(activeRoot)
-      await this.installTomlToRoot(activeRoot)
-
-      // restore diversion flag and cloud-save toggle
-      const tomlNow = path.join(activeRoot, 'opensteamtool.toml')
-      this.setTomlKey(tomlNow, 'diversion', 'enabled', this.getMode() === 'pure' ? 'true' : 'false')
-      const cloudEnabled = Db.get<boolean>('user_pref_cloud_save') ?? true
-      this.setTomlKey(tomlNow, 'cloud', 'enabled', cloudEnabled ? 'true' : 'false')
-      if (app.isPackaged) {
-        this.setTomlKey(tomlNow, 'log', 'level', '"info"')
-      }
-      CloudSaveService.setTomlCloudEnabled(steamPath, cloudEnabled)
-
-      // 顺手迁移存量旧云存档并固死 CR_STATE_DIR 环境变量
-      try {
-        if (fs.existsSync(path.join(steamPath, 'cloud_redirect')) || fs.existsSync(path.join(steamPath, 'cloud_redirect.log'))) {
-          await CloudSaveService.migrateCrStorage()
+      // 清单节点探测
+      if (needsNodeProbe) {
+        await EngineService.probeManifestNodes().catch(() => {})
+        if (!EngineService.getManifestProbeResult()?.url) {
+          return { success: false, error: 'NETWORK_ERROR' }
         }
-      } catch {}
-      process.env.CR_STATE_DIR = this.ostDir
-      CloudSaveService.writeCrStateDirEnv(this.ostDir)
-
-      // chain pattern alignment in the same transaction (no double-click)
-      await PatternSyncService.validatePatterns().catch(() => {})
+      }
 
       return { success: true }
     } catch (e: any) {
-      return { success: false, error: e?.message || 'REPAIR_FAIL' }
+      return { success: false, error: TitanProtocol.translateError(e, 'REPAIR_FAIL') }
     } finally {
       this.busy = false
     }
@@ -293,15 +322,10 @@ export class ModeSwitchService {
     return null
   }
 
-  // ============ 模式查询 ============
+  // ============ 模式查询（数据库 ost_mode 为唯一真理源，缺省默认 classic） ============
   static getMode(): OstMode {
     const recorded = Db.get<string>(this.MODE_KEY)
-    if (recorded === 'pure' || recorded === 'classic') return recorded
-
-    // 若数据库无记录（全新安装 / 初次启动）：
-    // 规范：全新客户端默认基线一律为经典模式 (Classic)，并持久化至本地数据库，杜绝悬空与误判
-    Db.set(this.MODE_KEY, 'classic')
-    return 'classic'
+    return recorded === 'pure' ? 'pure' : 'classic'
   }
 
   static getActiveRoot(steamPath: string): string {
@@ -317,24 +341,66 @@ export class ModeSwitchService {
   }
 
   // ============ Steam 关停阶梯 ============
-  private static async isSteamRunning(): Promise<boolean> {
+  private static isImageRunning(imageName: string): boolean {
     try {
-      return WinNative.isProcessRunning('steam.exe')
+      return WinNative.isProcessRunning(imageName)
     } catch {
       return false
     }
+  }
+
+  private static async isSteamRunning(): Promise<boolean> {
+    return this.isImageRunning('steam.exe')
+  }
+
+  // 通知 Windows 服务管理器停止 Steam Client Service (内置普通用户亦具备 STOP 权限)
+  private static stopSteamClientService(): Promise<boolean> {
+    if (process.platform !== 'win32') return Promise.resolve(false)
+    const scExe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'sc.exe')
+    return new Promise((resolve) => {
+      execFile(scExe, ['stop', 'Steam Client Service'], { windowsHide: true, timeout: 3000 }, (err) => {
+        resolve(!err)
+      })
+    })
+  }
+
+  private static async waitProcessExit(imageName: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (!this.isImageRunning(imageName)) return true
+      await delay(100)
+    }
+    return !this.isImageRunning(imageName)
   }
 
   static async ensureSteamDead(): Promise<void> {
     const wasRunning = await this.isSteamRunning()
     WinNative.killProcesses(['steam.exe', 'steamwebhelper.exe', 'crashhandler64.exe', 'crashhandler.exe'], true)
     if (wasRunning) {
-      const deadline = Date.now() + 5000
-      while (Date.now() < deadline) {
-        if (!await this.isSteamRunning()) break
-        await delay(100)
+      await this.waitProcessExit('steam.exe', 5000)
+    }
+
+    // 若后台 SteamService.exe 仍在收尾或未退出，主动停止并等待其彻底释放管道句柄再继续
+    if (this.isImageRunning('steamservice.exe')) {
+      const stopSent = await this.stopSteamClientService()
+      if (this.isImageRunning('steamservice.exe')) {
+        if (!stopSent) {
+          // 服务未注册或通知失败时尝试直接结束进程（管理员或用户态进程生效）
+          WinNative.killProcesses(['steamservice.exe'], true)
+        } else {
+          // 优先给服务 2 秒优雅退出，超时仍残留则补一次强杀兜底
+          const exitedGracefully = await this.waitProcessExit('steamservice.exe', 2000)
+          if (!exitedGracefully) {
+            WinNative.killProcesses(['steamservice.exe'], true)
+          }
+        }
+        const exited = await this.waitProcessExit('steamservice.exe', 12000)
+        if (!exited) {
+          console.warn('[ModeSwitchService] 等待 SteamService.exe 退出超时，继续后续流程')
+        }
       }
     }
+
     await delay(500)
     if (await this.isSteamRunning()) throw new Error('STEAM_STILL_RUNNING')
   }
@@ -381,20 +447,20 @@ export class ModeSwitchService {
     const current = this.getMode()
     if (current === target) return { success: true, mode: target }
     if (this.busy) return { success: false, mode: current, error: 'BUSY' }
-    if (this.deployBusyFn && this.deployBusyFn()) return { success: false, mode: current, error: 'DEPLOY_IN_PROGRESS' }
-
-    // 前置对齐 ost_mode：确保缺包自动拉取(deployTrigger)及活根解析全程对齐目标模式；若中途失败则回滚为 current
-    Db.set(this.MODE_KEY, target)
-
-    if (!this.toolsCacheReady()) {
-      if (!this.deployTrigger) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'DEPLOY_TRIGGER_MISSING' } }
-      const pull = await this.deployTrigger()
-      if (!pull?.success) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'TOOLS_PULL_FAIL:' + (pull?.error || '') } }
-      if (!this.toolsCacheReady()) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'TOOLS_PULL_INCOMPLETE' } }
-    }
+    if (TitanProtocol.hasActiveDeployment()) return { success: false, mode: current, error: 'DEPLOY_IN_PROGRESS' }
 
     this.busy = true
     try {
+      // 前置对齐 ost_mode：确保缺包自动拉取及活根解析全程对齐目标模式；若中途失败则回滚为 current
+      Db.set(this.MODE_KEY, target)
+      await TitanProtocol.waitForPrefetch()
+
+      if (!this.toolsCacheReady()) {
+        const pull = await EngineService.pullLatest('ost', true)
+        if (!pull?.success) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: pull?.error ? TitanProtocol.translateError(pull.error, 'TOOLS_PULL_FAIL') : 'TOOLS_PULL_FAIL' } }
+        if (!this.toolsCacheReady()) { Db.set(this.MODE_KEY, current); return { success: false, mode: current, error: 'TOOLS_PULL_INCOMPLETE' } }
+      }
+
       const det = await SteamDetector.detect()
       const steamPath = det.path
       if (!steamPath) {
@@ -499,7 +565,7 @@ export class ModeSwitchService {
       } catch (e: any) {
         Db.set(this.MODE_KEY, current)
         Logger.error('ModeSwitchService', '模式切换部署文件失败:', e?.message || e)
-        return { success: false, mode: current, error: 'DEPLOY_FAIL:' + (e?.message || e) }
+        return { success: false, mode: current, error: TitanProtocol.translateError(e, 'DEPLOY_FAIL') }
       }
 
       // 8. 写入分流决策与配置项：精准落入当前活根 destRoot 的 opensteamtool.toml
@@ -524,7 +590,7 @@ export class ModeSwitchService {
     } catch (e: any) {
       Db.set(this.MODE_KEY, current)
       Logger.error('ModeSwitchService', '模式切换发生未知未捕获异常:', e?.message || e)
-      return { success: false, mode: current, error: e?.message || 'UNKNOWN' }
+      return { success: false, mode: current, error: TitanProtocol.translateError(e, 'ERR_ENGINE_SWITCH_FAIL') }
     } finally {
       this.busy = false
     }

@@ -34,16 +34,19 @@
             v-if="accounts.length > 0" 
             v-model="selectedAccount" 
             @change="onAccountChange"
-            class="text-xs rounded px-3 py-1.5 outline-none font-code border transition-all"
+            :disabled="!!busyAppId"
+            :title="selectedAccount ? getAccountTitle(selectedAccount) : ''"
+            class="text-xs rounded px-3 py-1.5 outline-none font-code border transition-all max-w-[240px] disabled:opacity-40 disabled:cursor-not-allowed"
             :class="currentTheme === 'anime'
               ? 'bg-white border-[#e2d4f0] text-[#1e192b] focus:border-[#ff85b3]'
               : 'bg-[#0a0a0a] border-white/10 text-zinc-300 focus:border-[#00f3ff]/40'"
           >
-            <option v-for="acc in accounts" :key="acc" :value="acc">Steam Account: {{ acc }}</option>
+            <option v-for="acc in accounts" :key="acc" :value="acc" :title="getAccountTitle(acc)">{{ getAccountLabel(acc) }}</option>
           </select>
           <button 
-            @click="refresh" 
-            class="transition-colors p-1 rounded" 
+            @click="refresh()" 
+            :disabled="!!busyAppId"
+            class="transition-colors p-1 rounded disabled:opacity-40 disabled:cursor-not-allowed" 
             :class="currentTheme === 'anime' ? 'text-slate-400 hover:text-[#ff66b2] hover:bg-pink-50' : 'text-zinc-500 hover:text-[#00f3ff]'" 
             :title="t('cloud.refresh')"
           >
@@ -141,7 +144,7 @@
                 <!-- 1. 云端功能：仅 VIP 可用 -->
                 <button 
                   @click="handleUpload(item)" 
-                  :disabled="!isVip || busyAppId === item.appId || !item.hasLocal"
+                  :disabled="!isVip || !!busyAppId || !item.hasLocal"
                   :title="!isVip ? t('cloud.vipOnly') : ''"
                   class="rounded font-black transition-all disabled:opacity-20 disabled:cursor-not-allowed border"
                   :class="[
@@ -155,7 +158,7 @@
                 </button>
                 <button 
                   @click="handleDownload(item)" 
-                  :disabled="!isVip || busyAppId === item.appId || !item.hasCloud"
+                  :disabled="!isVip || !!busyAppId || !item.hasCloud"
                   :title="!isVip ? t('cloud.vipOnly') : ''"
                   class="rounded font-bold transition-all disabled:opacity-20 disabled:cursor-not-allowed border"
                   :class="[
@@ -171,7 +174,7 @@
                 <!-- 2. 本地工具：全员免费开放（不受 isVip 限制） -->
                 <button 
                   @click="handleManualPack(item)" 
-                  :disabled="busyAppId === item.appId || !item.hasLocal"
+                  :disabled="!!busyAppId || !item.hasLocal"
                   class="rounded font-bold transition-all disabled:opacity-20 disabled:cursor-not-allowed border"
                   :class="[
                     btnSizeClass,
@@ -183,21 +186,8 @@
                   {{ t('cloud.localBackup') }}
                 </button>
                 <button 
-                  @click="handleOpenLocalFolder(item)" 
-                  :disabled="busyAppId === item.appId || !item.hasLocal"
-                  class="rounded font-bold transition-all disabled:opacity-20 disabled:cursor-not-allowed border"
-                  :class="[
-                    btnSizeClass,
-                    currentTheme === 'anime'
-                      ? 'bg-white text-[#4a425a] border-[#e2d4f0] hover:bg-slate-50 hover:text-[#ff66b2]'
-                      : 'bg-white/[0.04] text-zinc-400 border-white/10 hover:bg-white/[0.08]'
-                  ]"
-                >
-                  {{ t('cloud.localOpen') }}
-                </button>
-                <button 
                   @click="handleManualRestore(item)" 
-                  :disabled="busyAppId === item.appId"
+                  :disabled="!!busyAppId"
                   class="rounded font-bold transition-all disabled:opacity-20 disabled:cursor-not-allowed border"
                   :class="[
                     btnSizeClass,
@@ -212,7 +202,7 @@
                 <!-- 3. 云端功能：仅 VIP 可用 -->
                 <button 
                   @click="handleDelete(item)" 
-                  :disabled="!isVip || busyAppId === item.appId"
+                  :disabled="!isVip || !item.hasCloud || !!busyAppId"
                   :title="!isVip ? t('cloud.vipOnly') : ''"
                   class="rounded font-bold transition-all disabled:opacity-20 disabled:cursor-not-allowed border"
                   :class="[
@@ -258,7 +248,42 @@ const authStore = useAuthStore()
 const isVip = computed(() => authStore.isVip)
 
 const accounts = ref<string[]>([])
+const accountNames = ref<Record<string, string>>({})
 const selectedAccount = ref('')
+
+const duplicateAccountNames = computed(() => {
+  const counts = new Map<string, number>()
+  for (const acc of accounts.value) {
+    const name = accountNames.value[acc]?.trim()
+    if (!name) continue
+    counts.set(name, (counts.get(name) || 0) + 1)
+  }
+  const dups = new Set<string>()
+  for (const [name, cnt] of counts) {
+    if (cnt > 1) dups.add(name)
+  }
+  return dups
+})
+
+const getAccountLabel = (accId: string) => {
+  const name = accountNames.value[accId]?.trim()
+  if (!name) return accId
+  return duplicateAccountNames.value.has(name) ? `${name} (${accId})` : name
+}
+
+const getAccountTitle = (accId: string) => {
+  const name = accountNames.value[accId]?.trim()
+  return name ? `${name} (ID: ${accId})` : accId
+}
+
+const escapeHtml = (val: string) =>
+  String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
 const items = ref<CloudSaveItem[]>([])
 const loading = ref(false)
 const busyAppId = ref('')
@@ -336,41 +361,96 @@ const onListScroll = (e: Event) => {
 }
 
 let listRO: ResizeObserver | null = null
+let refreshSeq = 0
 
-watch(() => props.visible, (v) => {
-  if (v) refresh()
+watch(listRef, (el) => {
+  listRO?.disconnect()
+  listRO = null
+  if (!el) return
+  if (el.clientHeight > 0) listHeight.value = el.clientHeight
+  listRO = new ResizeObserver(([entry]) => {
+    listHeight.value = entry.contentRect.height
+  })
+  listRO.observe(el)
 })
 
-async function refresh() {
+const resetScroll = () => {
+  scrollTop.value = 0
+  if (listRef.value) listRef.value.scrollTop = 0
+}
+
+const resetQuota = () => {
+  usedSlots.value = 0
+  maxSlots.value = 10
+  usedMb.value = 0
+  maxMb.value = 1024
+}
+
+watch(() => props.visible, (v) => {
+  if (v) {
+    resetScroll()
+    refresh()
+  } else {
+    refreshSeq++
+    loading.value = false
+    selectedAccount.value = ''
+    resetScroll()
+  }
+})
+
+async function refresh(preferredAccount?: string) {
+  const seq = ++refreshSeq
+  const preferred = typeof preferredAccount === 'string' && preferredAccount ? preferredAccount : undefined
   loading.value = true
   items.value = []
   try {
     const scanRes = await window.electron.invoke('cloudsave:scan-accounts')
+    if (seq !== refreshSeq) return
     accounts.value = scanRes.accounts || []
-    if (accounts.value.length > 0 && !selectedAccount.value) {
+    accountNames.value = scanRes.accountNames || {}
+
+    if (preferred) {
+      if (!accounts.value.includes(preferred)) {
+        accounts.value = [preferred, ...accounts.value]
+      }
+      selectedAccount.value = preferred
+    } else if (accounts.value.length === 0) {
+      selectedAccount.value = ''
+    } else if (!selectedAccount.value || !accounts.value.includes(selectedAccount.value)) {
       selectedAccount.value = accounts.value[0]
     }
 
+    let localItems: CloudSaveItem[] = []
     if (selectedAccount.value) {
       const localRes = await window.electron.invoke('cloudsave:scan-saves', selectedAccount.value)
-      const localItems: CloudSaveItem[] = localRes.items || []
+      if (seq !== refreshSeq) return
+      localItems = localRes.items || []
+    }
 
-      let cloudItems: any[] = []
-      if (isVip.value) {
-        try {
-          const listRes = await window.electron.invoke('cloudsave:list')
-          if (listRes?.data?.apps) {
-            cloudItems = listRes.data.apps
-            usedSlots.value = listRes.data.quota?.used_slots || 0
-            maxSlots.value = listRes.data.quota?.max_slots || 10
-            usedMb.value = listRes.data.quota?.used_mb || 0
-            maxMb.value = listRes.data.quota?.max_mb || 1024
-          }
-        } catch (e) {
-          console.warn('[CloudSave] 拉取云端列表失败:', e)
+    let cloudItems: any[] = []
+    if (isVip.value) {
+      try {
+        const listRes = scanRes.prefetchedCloudData ?? await window.electron.invoke('cloudsave:list')
+        if (seq !== refreshSeq) return
+        if (!listRes?.error && listRes?.data?.apps) {
+          cloudItems = listRes.data.apps
+          usedSlots.value = listRes.data.quota?.used_slots || 0
+          maxSlots.value = listRes.data.quota?.max_slots || 10
+          usedMb.value = listRes.data.quota?.used_mb || 0
+          maxMb.value = listRes.data.quota?.max_mb || 1024
+        } else {
+          resetQuota()
         }
+      } catch (e) {
+        console.warn('[CloudSave] 拉取云端列表失败:', e)
+        resetQuota()
       }
+    } else {
+      resetQuota()
+    }
 
+    if (seq !== refreshSeq) return
+    if (localItems.length > 0 || cloudItems.length > 0) {
       const merged = new Map<string, CloudSaveItem>()
       for (const it of localItems) {
         merged.set(it.appId, { ...it, hasCloud: false, cloudDate: '' })
@@ -381,7 +461,9 @@ async function refresh() {
           const existing = merged.get(appId)!
           existing.hasCloud = c.has_backup
           existing.cloudDate = c.backup_at || ''
-          if (c.game_name && !existing.gameName) existing.gameName = c.game_name
+          if (c.game_name && (!existing.gameName || existing.gameName.startsWith('AppID: '))) {
+            existing.gameName = c.game_name
+          }
         } else {
           merged.set(appId, {
             appId,
@@ -396,17 +478,23 @@ async function refresh() {
       items.value = Array.from(merged.values())
     }
   } catch (e: any) {
+    if (seq !== refreshSeq) return
     Swal.fire({ title: t('cloud.scanFailed'), text: t(e.message), icon: 'error', background: '#121212', color: '#fff', confirmButtonColor: '#ef4444' })
   } finally {
-    loading.value = false
+    if (seq === refreshSeq) {
+      loading.value = false
+    }
   }
 }
 
 function onAccountChange() {
+  if (busyAppId.value) return
+  resetScroll()
   refresh()
 }
 
 async function handleUpload(item: CloudSaveItem) {
+  if (busyAppId.value) return
   if (!isVip.value) {
     Swal.fire({
       title: t('cloud.vipTitle'),
@@ -439,6 +527,7 @@ async function handleUpload(item: CloudSaveItem) {
 }
 
 async function handleDownload(item: CloudSaveItem) {
+  if (busyAppId.value) return
   if (!isVip.value) {
     Swal.fire({
       title: t('cloud.vipTitle'),
@@ -452,9 +541,13 @@ async function handleDownload(item: CloudSaveItem) {
     return
   }
   if (!item.hasCloud) return
+  const targetAccountLabel = selectedAccount.value ? getAccountLabel(selectedAccount.value) : t('cloud.autoAssignAccount')
   const confirm = await Swal.fire({
     title: t('cloud.restoreConfirmTitle'),
-    html: t('cloud.restoreConfirmHtml', { game: item.gameName || item.appId }),
+    html: t('cloud.restoreConfirmHtml', {
+      game: escapeHtml(item.gameName || item.appId),
+      account: escapeHtml(targetAccountLabel)
+    }),
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: t('cloud.confirmRestore'),
@@ -472,7 +565,7 @@ async function handleDownload(item: CloudSaveItem) {
     const result = await window.electron.invoke('cloudsave:download', selectedAccount.value, item.appId)
     if (result.success) {
       Swal.fire({ title: t('cloud.restoreDone'), text: result.msg ? t(result.msg) : t('cloud.restoreDoneDefault'), icon: 'success', background: '#121212', color: '#fff', confirmButtonColor: '#00f3ff' })
-      await refresh()
+      await refresh(result.restoredAccountId)
     } else {
       Swal.fire({ title: t('cloud.restoreInfo'), text: t(result.msg), icon: 'info', background: '#121212', color: '#fff', confirmButtonColor: '#00f3ff' })
     }
@@ -485,7 +578,7 @@ async function handleDownload(item: CloudSaveItem) {
 }
 
 async function handleManualPack(item: CloudSaveItem) {
-  if (!item.hasLocal) return
+  if (busyAppId.value || !item.hasLocal) return
   busyAppId.value = item.appId
   busyAction.value = 'pack'
   try {
@@ -503,39 +596,15 @@ async function handleManualPack(item: CloudSaveItem) {
   }
 }
 
-async function handleOpenLocalFolder(item: CloudSaveItem) {
-  try {
-    const result = await window.electron.invoke('cloudsave:open-local-folder', selectedAccount.value, item.appId)
-    if (!result.success) {
-      if (result.notFound) {
-        const ask = await Swal.fire({
-          title: t('cloud.archiveMissingTitle'),
-          html: t('cloud.archiveMissingHtml', { game: item.gameName }),
-          icon: 'question',
-          showCancelButton: true,
-          confirmButtonText: t('cloud.packNow'),
-          cancelButtonText: t('cloud.packLater'),
-          background: '#121212',
-          color: '#fff',
-          confirmButtonColor: '#00f3ff',
-          cancelButtonColor: '#333'
-        })
-        if (ask.isConfirmed) {
-          await handleManualPack(item)
-        }
-      } else {
-        Swal.fire({ title: t('cloud.openFailed'), text: t(result.msg), icon: 'error', background: '#121212', color: '#fff', confirmButtonColor: '#ef4444' })
-      }
-    }
-  } catch (e: any) {
-    Swal.fire({ title: t('cloud.errorGeneric'), text: t(e.message), icon: 'error', background: '#121212', color: '#fff', confirmButtonColor: '#ef4444' })
-  }
-}
-
 async function handleManualRestore(item: CloudSaveItem) {
+  if (busyAppId.value) return
+  const targetAccountLabel = selectedAccount.value ? getAccountLabel(selectedAccount.value) : t('cloud.autoAssignAccount')
   const confirm = await Swal.fire({
     title: t('cloud.importTitle'),
-    html: t('cloud.importHtml', { game: item.gameName || item.appId }),
+    html: t('cloud.importHtml', {
+      game: escapeHtml(item.gameName || item.appId),
+      account: escapeHtml(targetAccountLabel)
+    }),
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: t('cloud.chooseFileRestore'),
@@ -553,7 +622,7 @@ async function handleManualRestore(item: CloudSaveItem) {
     const result = await window.electron.invoke('cloudsave:manual-restore', selectedAccount.value, item.appId)
     if (result.success) {
       Swal.fire({ title: t('cloud.importSuccess'), text: t(result.msg), icon: 'success', background: '#121212', color: '#fff', confirmButtonColor: '#00f3ff' })
-      await refresh()
+      await refresh(result.restoredAccountId)
     } else if (result.msg !== 'ERR_CANCELLED') {
       Swal.fire({ title: t('cloud.restoreInfo'), text: t(result.msg), icon: 'error', background: '#121212', color: '#fff', confirmButtonColor: '#ef4444' })
     }
@@ -566,6 +635,7 @@ async function handleManualRestore(item: CloudSaveItem) {
 }
 
 async function handleDelete(item: CloudSaveItem) {
+  if (busyAppId.value || !item.hasCloud) return
   if (!isVip.value) {
     Swal.fire({
       title: t('cloud.vipTitle'),
@@ -580,7 +650,7 @@ async function handleDelete(item: CloudSaveItem) {
   }
   const confirm = await Swal.fire({
     title: t('cloud.deleteConfirmTitle'),
-    html: t('cloud.deleteConfirmHtml', { game: item.gameName || item.appId }),
+    html: t('cloud.deleteConfirmHtml', { game: escapeHtml(item.gameName || item.appId) }),
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: t('cloud.confirmDelete'),
@@ -613,17 +683,11 @@ async function handleDelete(item: CloudSaveItem) {
 onMounted(() => {
   window.addEventListener('resize', updateScreenWidth)
   if (props.visible) refresh()
-  if (listRef.value) {
-    listHeight.value = listRef.value.clientHeight
-    listRO = new ResizeObserver(([entry]) => {
-      listHeight.value = entry.contentRect.height
-    })
-    listRO.observe(listRef.value)
-  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateScreenWidth)
   listRO?.disconnect()
+  listRO = null
 })
 </script>

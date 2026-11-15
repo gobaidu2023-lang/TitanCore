@@ -38,8 +38,15 @@ export class SearchService {
         } else {
           const json = await res.json()
           if (json.code && json.code !== 200 && json.code !== 0) {
-            gatewayError = json.msg || 'RESOURCE_NOT_FOUND'
-            backendMsg = json.msg || ''
+            const rawMsg = String(json.msg || '')
+            backendMsg = rawMsg
+            if (rawMsg.includes('上游双源确认无货') || rawMsg.includes('确认无货') || rawMsg.includes('当前上游无货') || rawMsg.includes('UPSTREAM_NO_STOCK')) {
+              gatewayError = 'UPSTREAM_NO_STOCK'
+            } else if (rawMsg.startsWith('RESOURCE_NOT_FOUND')) {
+              gatewayError = 'RESOURCE_NOT_FOUND'
+            } else {
+              gatewayError = rawMsg || 'RESOURCE_NOT_FOUND'
+            }
           } else {
             const hexPayload = typeof json.data === 'object' ? json.data?.data : json.data
             let decrypted = SecurityService.decryptNetworkPayload<any>(hexPayload)
